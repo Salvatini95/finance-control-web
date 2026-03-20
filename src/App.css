@@ -1,0 +1,25 @@
+.container {
+  min-height: 100vh;
+  background-color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  background-color: #1e293b;
+  padding: 40px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+h1 {
+  color: #22c55e;
+  font-size: 32px;
+}
+
+p {
+  color: #cbd5f5;
+  margin-top: 10px;
+}
