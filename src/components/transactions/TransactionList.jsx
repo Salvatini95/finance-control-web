@@ -8,11 +8,28 @@ deleteBtn,
 card
 }){
 
+const handleEdit = (t) => {
+  editTransaction(t)
+  // Scroll suave até o formulário
+  setTimeout(() => {
+    const form = document.getElementById("transaction-form")
+    if (form) {
+      form.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }, 100)
+}
+
 return(
 
 <div style={card}>
 
 <h3>Transações</h3>
+
+{filtered.length === 0 && (
+  <p style={{ color: "#64748b", fontSize: "14px", marginTop: "10px" }}>
+    Nenhuma transação encontrada.
+  </p>
+)}
 
 {filtered.map(t=>(
 
@@ -26,7 +43,7 @@ return(
 {t.type==="expense"?"-":"+"} R$ {t.amount}
 </span>
 
-<button style={editBtn} onClick={()=>editTransaction(t)}>Editar</button>
+<button style={editBtn} onClick={() => handleEdit(t)}>Editar</button>
 
 <button style={deleteBtn} onClick={()=>deleteTransaction(t.id)}>Excluir</button>
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/layout/Sidebar";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = "http://localhost:5000/api";
 
 function Transactions() {
 
@@ -11,15 +11,28 @@ function Transactions() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Filtros
   const [searchText, setSearchText] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
 
+  // Ordenação
   const [sortField, setSortField] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
 
+  // Modal de edição
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [editForm, setEditForm] = useState({
+    description: "",
+    amount: "",
+    type: "income",
+    category: "",
+    date: ""
+  });
+
+  // Formulário de nova transação
+  const [showForm, setShowForm] = useState(false);
+  const [newForm, setNewForm] = useState({
     description: "",
     amount: "",
     type: "income",
@@ -77,6 +90,54 @@ function Transactions() {
     setFiltered(result);
   }, [searchText, filterType, filterMonth, sortField, sortDir, transactions]);
 
+
+  // =========================
+  // NOVA TRANSAÇÃO
+  // =========================
+
+  const handleNewSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!newForm.description || !newForm.amount || !newForm.date) {
+      alert("Preencha todos os campos obrigatórios!");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/transactions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          description: newForm.description,
+          amount: Number(newForm.amount),
+          type: newForm.type,
+          category: newForm.category,
+          date: newForm.date
+        })
+      });
+
+      if (res.ok) {
+        setNewForm({ description: "", amount: "", type: "income", category: "", date: "" });
+        setShowForm(false);
+        fetchTransactions();
+      } else {
+        const data = await res.json();
+        alert(data.msg || "Erro ao criar transação");
+      }
+    } catch (err) {
+      console.error("Erro ao criar:", err);
+      alert("Erro de conexão com servidor");
+    }
+  };
+
+
+  // =========================
+  // DELETAR
+  // =========================
+
   const deleteTransaction = async (id) => {
     if (!window.confirm("Tem certeza que deseja excluir esta transação?")) return;
     try {
@@ -89,6 +150,11 @@ function Transactions() {
       console.error("Erro ao deletar:", err);
     }
   };
+
+
+  // =========================
+  // EDITAR
+  // =========================
 
   const openEdit = (t) => {
     setEditingTransaction(t);
@@ -136,6 +202,11 @@ function Transactions() {
     }
   };
 
+
+  // =========================
+  // ORDENAÇÃO
+  // =========================
+
   const handleSort = (field) => {
     if (sortField === field) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -170,6 +241,7 @@ function Transactions() {
 
       <div style={main}>
 
+        {/* CABEÇALHO */}
         <div style={header}>
           <div>
             <h1 style={title}>Transações</h1>
@@ -177,8 +249,90 @@ function Transactions() {
               {filtered.length} registro{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
             </p>
           </div>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            style={newBtn}
+          >
+            {showForm ? "✕ Fechar" : "+ Nova Transação"}
+          </button>
         </div>
 
+        {/* FORMULÁRIO DE NOVA TRANSAÇÃO */}
+        {showForm && (
+          <div style={formCard}>
+            <h3 style={formCardTitle}>➕ Nova Transação</h3>
+            <form onSubmit={handleNewSubmit} style={formGrid}>
+
+              <div style={fieldGroup}>
+                <label style={modalLabel}>Descrição</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Salário, Aluguel..."
+                  value={newForm.description}
+                  onChange={e => setNewForm({ ...newForm, description: e.target.value })}
+                  style={modalInput}
+                  required
+                />
+              </div>
+
+              <div style={fieldGroup}>
+                <label style={modalLabel}>Valor (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={newForm.amount}
+                  onChange={e => setNewForm({ ...newForm, amount: e.target.value })}
+                  style={modalInput}
+                  required
+                />
+              </div>
+
+              <div style={fieldGroup}>
+                <label style={modalLabel}>Tipo</label>
+                <select
+                  value={newForm.type}
+                  onChange={e => setNewForm({ ...newForm, type: e.target.value })}
+                  style={modalInput}
+                >
+                  <option value="income">Entrada</option>
+                  <option value="expense">Saída</option>
+                </select>
+              </div>
+
+              <div style={fieldGroup}>
+                <label style={modalLabel}>Categoria</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Alimentação"
+                  value={newForm.category}
+                  onChange={e => setNewForm({ ...newForm, category: e.target.value })}
+                  style={modalInput}
+                />
+              </div>
+
+              <div style={fieldGroup}>
+                <label style={modalLabel}>Data</label>
+                <input
+                  type="date"
+                  value={newForm.date}
+                  onChange={e => setNewForm({ ...newForm, date: e.target.value })}
+                  style={modalInput}
+                  required
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                <button type="submit" style={saveBtn}>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        )}
+
+        {/* CARDS DE TOTAIS */}
         <div style={cardsRow}>
           <div style={summaryCard}>
             <span style={cardLabel}>Total Entradas</span>
@@ -196,6 +350,7 @@ function Transactions() {
           </div>
         </div>
 
+        {/* FILTROS */}
         <div style={filtersRow}>
           <input
             type="text"
@@ -231,6 +386,7 @@ function Transactions() {
           )}
         </div>
 
+        {/* TABELA */}
         <div style={tableWrapper}>
           {loading ? (
             <div style={emptyState}>Carregando transações...</div>
@@ -289,6 +445,7 @@ function Transactions() {
 
       </div>
 
+      {/* MODAL DE EDIÇÃO */}
       {editingTransaction && (
         <div style={modalOverlay} onClick={closeEdit}>
           <div style={modalBox} onClick={e => e.stopPropagation()}>
@@ -356,6 +513,10 @@ const main = { flex: 1, padding: "40px", overflow: "auto" };
 const header = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "30px" };
 const title = { fontSize: "28px", fontWeight: "700", margin: 0, letterSpacing: "-0.5px" };
 const subtitle = { color: "#64748b", fontSize: "14px", margin: "6px 0 0 0" };
+const newBtn = { background: "linear-gradient(135deg, #4f46e5, #6366f1)", border: "none", color: "white", padding: "12px 20px", borderRadius: "10px", cursor: "pointer", fontSize: "14px", fontWeight: "600" };
+const formCard = { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", padding: "24px", marginBottom: "24px" };
+const formCardTitle = { fontSize: "16px", fontWeight: "600", margin: "0 0 20px 0", color: "white" };
+const formGrid = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr auto", gap: "16px", alignItems: "start" };
 const cardsRow = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "24px" };
 const summaryCard = { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "8px" };
 const cardLabel = { fontSize: "12px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" };

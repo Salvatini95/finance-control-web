@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { loginUser, registerUser } from "../services/api"
+import logoImg from "../assets/logo.gif"
 
 // =========================
 // CANVAS — NÚMEROS FLUTUANDO
@@ -183,35 +184,31 @@ function Login() {
   return (
     <div style={wrapper}>
 
-      {/* FOTO DE CIDADE — UNSPLASH */}
       <div style={cityBg} />
-
-      {/* OVERLAY ESCURO */}
       <div style={overlay} />
-
-      {/* NÚMEROS FLUTUANDO */}
       <FloatingNumbers />
 
-      {/* CONTEÚDO CENTRALIZADO */}
       <div style={centerLayout}>
 
         {/* BRANDING */}
         <div style={branding}>
-          <span style={brandIcon}>₿</span>
+          <img
+            src={logoImg}
+            alt="Finance Control Logo"
+            style={logoStyle}
+          />
           <h1 style={brandTitle}>FINANCE CONTROL</h1>
           <p style={brandSubtitle}>Gerencie suas finanças com inteligência e clareza.</p>
         </div>
 
-        {/* CARD ESTILO INTECH */}
+        {/* CARD */}
         <div style={inteachCard}>
 
-          {/* CANTOS CORTADOS decorativos */}
           <div style={cornerTL} />
           <div style={cornerTR} />
           <div style={cornerBL} />
           <div style={cornerBR} />
 
-          {/* HEADER DO CARD */}
           <div style={cardHeader}>
             <h2 style={cardTitle}>
               {isRegister ? "Criar conta" : "Acessar conta"}
@@ -221,13 +218,11 @@ function Login() {
             </p>
           </div>
 
-          {/* DIVISOR */}
           <div style={divider} />
 
           {error && <div style={alertError}>⚠️ {error}</div>}
           {success && <div style={alertSuccess}>✅ {success}</div>}
 
-          {/* FORMULÁRIO */}
           <form onSubmit={handleSubmit} style={formBody}>
 
             <div style={fieldGroup}>
@@ -292,7 +287,6 @@ function Login() {
               </div>
             )}
 
-            {/* BOTÃO BRANCO ESTILO INTECH */}
             <button
               type="submit"
               disabled={loading}
@@ -314,7 +308,6 @@ function Login() {
 
           </form>
 
-          {/* TOGGLE */}
           <div style={toggleRow}>
             <span style={toggleText}>
               {isRegister ? "Já tem uma conta?" : "Não tem uma conta?"}
@@ -343,243 +336,40 @@ function Login() {
 // ESTILOS
 // =========================
 
-const wrapper = {
-  position: "relative",
-  minHeight: "100vh",
-  overflow: "hidden",
-  fontFamily: "'Inter', 'Segoe UI', sans-serif",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center"
+const wrapper = { position: "relative", minHeight: "100vh", overflow: "hidden", fontFamily: "'Inter', 'Segoe UI', sans-serif", display: "flex", alignItems: "center", justifyContent: "center" }
+const cityBg = { position: "fixed", inset: 0, backgroundImage: `url("https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1920&q=80")`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(3px) brightness(0.5)", transform: "scale(1.05)", zIndex: 0 }
+const overlay = { position: "fixed", inset: 0, background: `linear-gradient(180deg, rgba(2,6,23,0.7) 0%, rgba(2,6,23,0.4) 50%, rgba(2,6,23,0.8) 100%), radial-gradient(ellipse at 50% 50%, rgba(99,102,241,0.12) 0%, transparent 70%)`, zIndex: 1 }
+const centerLayout = { position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: "28px", width: "100%", maxWidth: "520px", padding: "40px 20px" }
+const branding = { textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "0px" }
+
+const logoStyle = {
+  width: "300px",
+  height: "300px",
+  objectFit: "contain",
+  marginBottom: "0px"
 }
 
-// Foto de cidade via Unsplash
-const cityBg = {
-  position: "fixed",
-  inset: 0,
-  backgroundImage: `url("https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1920&q=80")`,
-  backgroundSize: "cover",
-  backgroundPosition: "center",
-  filter: "blur(3px) brightness(0.5)",
-  transform: "scale(1.05)",
-  zIndex: 0
-}
-
-const overlay = {
-  position: "fixed",
-  inset: 0,
-  background: `
-    linear-gradient(180deg, rgba(2,6,23,0.7) 0%, rgba(2,6,23,0.4) 50%, rgba(2,6,23,0.8) 100%),
-    radial-gradient(ellipse at 50% 50%, rgba(99,102,241,0.12) 0%, transparent 70%)
-  `,
-  zIndex: 1
-}
-
-const centerLayout = {
-  position: "relative",
-  zIndex: 2,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: "28px",
-  width: "100%",
-  maxWidth: "520px",
-  padding: "40px 20px"
-}
-
-// BRANDING
-const branding = {
-  textAlign: "center"
-}
-
-const brandIcon = {
-  fontSize: "32px",
-  display: "block",
-  marginBottom: "10px"
-}
-
-const brandTitle = {
-  fontSize: "32px",
-  fontWeight: "400",
-  color: "white",
-  margin: "0 0 8px 0",
-  letterSpacing: "8px",
-  fontFamily: "'Bodoni Moda', 'Bodoni MT', Georgia, serif",
-}
-
-const brandSubtitle = {
-  fontSize: "13px",
-  color: "rgba(255,255,255,0.45)",
-  margin: 0,
-  letterSpacing: "1px",
-  fontFamily: "'Times New Roman', Times, serif",
-  fontWeight: "400"
-}
-
-// CARD INTECH
-const inteachCard = {
-  width: "100%",
-  position: "relative",
-  background: "rgba(15, 20, 40, 0.0)",
-  backdropFilter: "blur(8px)",
-  WebkitBackdropFilter: "blur(8px)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderTop: "1px solid rgba(210,210,255,0.55)",
-  borderLeft: "1px solid rgba(180,180,240,0.35)",
-  padding: "40px",
-  clipPath: "polygon(24px 0%, 100% 0%, 100% calc(100% - 24px), calc(100% - 24px) 100%, 0% 100%, 0% 24px)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), inset 1px 0 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.5)"
-}
-
-// Cantos decorativos brilhantes
-const cornerBase = {
-  position: "absolute",
-  width: "20px",
-  height: "20px",
-  borderColor: "rgba(99,102,241,0.7)"
-}
-
-const cornerTL = {
-  ...cornerBase,
-  top: 0,
-  left: 0,
-  borderTop: "2px solid rgba(99,102,241,0.7)",
-  borderLeft: "2px solid rgba(99,102,241,0.7)"
-}
-
-const cornerTR = {
-  ...cornerBase,
-  top: 0,
-  right: 0,
-  borderTop: "2px solid rgba(99,102,241,0.7)",
-  borderRight: "2px solid rgba(99,102,241,0.7)"
-}
-
-const cornerBL = {
-  ...cornerBase,
-  bottom: 0,
-  left: 0,
-  borderBottom: "2px solid rgba(99,102,241,0.7)",
-  borderLeft: "2px solid rgba(99,102,241,0.7)"
-}
-
-const cornerBR = {
-  ...cornerBase,
-  bottom: 0,
-  right: 0,
-  borderBottom: "2px solid rgba(99,102,241,0.7)",
-  borderRight: "2px solid rgba(99,102,241,0.7)"
-}
-
-const cardHeader = {
-  marginBottom: "20px",
-  textAlign: "center"
-}
-
-const cardTitle = {
-  fontSize: "26px",
-  fontWeight: "700",
-  color: "white",
-  margin: "0 0 6px 0",
-  letterSpacing: "-0.5px"
-}
-
-const cardSub = {
-  fontSize: "13px",
-  color: "rgba(255,255,255,0.4)",
-  margin: 0
-}
-
-const divider = {
-  height: "1px",
-  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)",
-  marginBottom: "28px"
-}
-
-const alertError = {
-  background: "rgba(239,68,68,0.1)",
-  border: "1px solid rgba(239,68,68,0.2)",
-  color: "#f87171",
-  padding: "11px 14px",
-  borderRadius: "8px",
-  fontSize: "13px",
-  marginBottom: "18px"
-}
-
-const alertSuccess = {
-  background: "rgba(16,185,129,0.1)",
-  border: "1px solid rgba(16,185,129,0.2)",
-  color: "#34d399",
-  padding: "11px 14px",
-  borderRadius: "8px",
-  fontSize: "13px",
-  marginBottom: "18px"
-}
-
-const formBody = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "16px"
-}
-
-const fieldGroup = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "7px"
-}
-
-const fieldLabel = {
-  fontSize: "12px",
-  fontWeight: "500",
-  color: "rgba(255,255,255,0.6)",
-  letterSpacing: "0.5px"
-}
-
-const inputStyle = {
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.15)",
-  borderRadius: "50px",
-  padding: "13px 20px",
-  color: "white",
-  fontSize: "14px",
-  outline: "none",
-  transition: "all 0.2s",
-  width: "100%",
-  boxSizing: "border-box"
-}
-
-// Botão branco estilo Intech
-const submitBtn = {
-  width: "100%",
-  padding: "14px",
-  borderRadius: "50px",
-  border: "none",
-  background: "white",
-  marginTop: "8px",
-  transition: "all 0.2s",
-  boxShadow: "0 4px 20px rgba(255,255,255,0.15)"
-}
-
-const toggleRow = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  gap: "8px",
-  marginTop: "20px"
-}
-
-const toggleText = {
-  fontSize: "13px",
-  color: "rgba(255,255,255,0.4)"
-}
-
-const toggleBtn = {
-  background: "none",
-  border: "none",
-  fontSize: "13px",
-  fontWeight: "600",
-  cursor: "pointer",
-  padding: 0
-}
+const brandTitle = { fontSize: "32px", fontWeight: "400", color: "white", margin: "0 0 8px 0", letterSpacing: "8px", fontFamily: "'Bodoni Moda', 'Bodoni MT', Georgia, serif" }
+const brandSubtitle = { fontSize: "13px", color: "rgba(255,255,255,0.45)", margin: 0, letterSpacing: "1px", fontFamily: "'Times New Roman', Times, serif", fontWeight: "400" }
+const inteachCard = { width: "100%", position: "relative", background: "rgba(15,20,40,0.0)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.08)", borderTop: "1px solid rgba(210,210,255,0.55)", borderLeft: "1px solid rgba(180,180,240,0.35)", padding: "40px", clipPath: "polygon(24px 0%, 100% 0%, 100% calc(100% - 24px), calc(100% - 24px) 100%, 0% 100%, 0% 24px)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), inset 1px 0 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.5)" }
+const cornerBase = { position: "absolute", width: "20px", height: "20px" }
+const cornerTL = { ...cornerBase, top: 0, left: 0, borderTop: "2px solid rgba(99,102,241,0.7)", borderLeft: "2px solid rgba(99,102,241,0.7)" }
+const cornerTR = { ...cornerBase, top: 0, right: 0, borderTop: "2px solid rgba(99,102,241,0.7)", borderRight: "2px solid rgba(99,102,241,0.7)" }
+const cornerBL = { ...cornerBase, bottom: 0, left: 0, borderBottom: "2px solid rgba(99,102,241,0.7)", borderLeft: "2px solid rgba(99,102,241,0.7)" }
+const cornerBR = { ...cornerBase, bottom: 0, right: 0, borderBottom: "2px solid rgba(99,102,241,0.7)", borderRight: "2px solid rgba(99,102,241,0.7)" }
+const cardHeader = { marginBottom: "20px", textAlign: "center" }
+const cardTitle = { fontSize: "26px", fontWeight: "700", color: "white", margin: "0 0 6px 0", letterSpacing: "-0.5px" }
+const cardSub = { fontSize: "13px", color: "rgba(255,255,255,0.4)", margin: 0 }
+const divider = { height: "1px", background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)", marginBottom: "28px" }
+const alertError = { background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", padding: "11px 14px", borderRadius: "8px", fontSize: "13px", marginBottom: "18px" }
+const alertSuccess = { background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399", padding: "11px 14px", borderRadius: "8px", fontSize: "13px", marginBottom: "18px" }
+const formBody = { display: "flex", flexDirection: "column", gap: "16px" }
+const fieldGroup = { display: "flex", flexDirection: "column", gap: "7px" }
+const fieldLabel = { fontSize: "12px", fontWeight: "500", color: "rgba(255,255,255,0.6)", letterSpacing: "0.5px" }
+const inputStyle = { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "50px", padding: "13px 20px", color: "white", fontSize: "14px", outline: "none", transition: "all 0.2s", width: "100%", boxSizing: "border-box" }
+const submitBtn = { width: "100%", padding: "14px", borderRadius: "50px", border: "none", background: "white", marginTop: "8px", transition: "all 0.2s", boxShadow: "0 4px 20px rgba(255,255,255,0.15)" }
+const toggleRow = { display: "flex", justifyContent: "center", alignItems: "center", gap: "8px", marginTop: "20px" }
+const toggleText = { fontSize: "13px", color: "rgba(255,255,255,0.4)" }
+const toggleBtn = { background: "none", border: "none", fontSize: "13px", fontWeight: "600", cursor: "pointer", padding: 0 }
 
 export default Login

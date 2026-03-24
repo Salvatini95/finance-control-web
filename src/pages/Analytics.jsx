@@ -4,7 +4,7 @@ import Sidebar from "../components/layout/Sidebar";
 import BalanceChart from "../components/charts/BalanceChart";
 import HeatmapChart from "../components/charts/HeatmapChart";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = "http://localhost:5000/api";
 
 function Analytics(){
 

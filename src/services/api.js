@@ -1,8 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL;
-
-// =========================
-// AUTH
-// =========================
+const API_URL = "http://localhost:5000/api";
 
 export async function loginUser(email, password) {
   const response = await fetch(`${API_URL}/login`, {
@@ -22,10 +18,6 @@ export async function registerUser(email, password) {
   return response;
 }
 
-// =========================
-// HELPER — TOKEN
-// =========================
-
 export function getAuthHeaders() {
   const token = localStorage.getItem("token");
   return {
@@ -33,10 +25,6 @@ export function getAuthHeaders() {
     Authorization: `Bearer ${token}`,
   };
 }
-
-// =========================
-// TRANSAÇÕES
-// =========================
 
 export async function getTransactions() {
   const response = await fetch(`${API_URL}/transactions`, {

@@ -9,8 +9,9 @@ import TransactionForm from "../components/transactions/TransactionForm";
 import TransactionList from "../components/transactions/TransactionList";
 
 import worldMap from "../assets/world-map.svg";
+import logoGif from "../assets/video.gif";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = "http://localhost:5000/api";
 
 function Dashboard(){
 
@@ -34,36 +35,19 @@ const [sidebarOpen,setSidebarOpen]=useState(false);
 
 const token = localStorage.getItem("token");
 
-
-// =========================
-// BUSCAR TRANSAÇÕES
-// =========================
-
 const fetchTransactions = async ()=>{
-
 if(!token) return;
-
 setLoading(true);
-
 try{
-
-const res = await fetch(
-`${API_URL}/transactions`,
-{
-headers:{
-Authorization:`Bearer ${token}`
-}
-}
-);
-
+const res = await fetch(`${API_URL}/transactions`,{
+headers:{ Authorization:`Bearer ${token}` }
+});
 if(res.status === 401){
 localStorage.removeItem("token");
 window.location.href = "/";
 return;
 }
-
 const data = await res.json();
-
 if(Array.isArray(data)){
 setTransactions(data);
 setFiltered(data);
@@ -71,43 +55,22 @@ setFiltered(data);
 setTransactions([]);
 setFiltered([]);
 }
-
 }catch(err){
 console.log("Erro ao buscar transações",err);
 setTransactions([]);
 setFiltered([]);
 }
-
 setLoading(false);
 };
 
-useEffect(()=>{
-fetchTransactions();
-},[token]);
-
-
-// =========================
-// FILTROS
-// =========================
+useEffect(()=>{ fetchTransactions(); },[token]);
 
 useEffect(()=>{
-
 let result = Array.isArray(transactions) ? [...transactions] : [];
-
-if(filterYear){
-result = result.filter(t=>t.date?.startsWith(filterYear));
-}
-
-if(filterMonth){
-result = result.filter(t=>t.date?.substring(5,7)===filterMonth);
-}
-
-if(filterType){
-result = result.filter(t=>t.type===filterType);
-}
-
+if(filterYear) result = result.filter(t=>t.date?.startsWith(filterYear));
+if(filterMonth) result = result.filter(t=>t.date?.substring(5,7)===filterMonth);
+if(filterType) result = result.filter(t=>t.type===filterType);
 setFiltered(result);
-
 },[filterYear,filterMonth,filterType,transactions]);
 
 const clearFilters=()=>{
@@ -117,43 +80,23 @@ setFilterType("");
 setFiltered(transactions);
 };
 
-
-// =========================
-// SALVAR / EDITAR
-// =========================
-
 const handleSubmit = async (e) => {
-
 e.preventDefault();
-
 if(!description || !amount || !category || !date){
 alert("Preencha todos os campos!");
 return;
 }
-
 const parsedAmount = Number(amount);
-
 if(isNaN(parsedAmount)){
 alert("Valor inválido!");
 return;
 }
-
-const body = {
-description,
-amount: parsedAmount,
-type,
-category,
-date
-};
-
+const body = { description, amount: parsedAmount, type, category, date };
 try{
-
 const url = editingId
 ? `${API_URL}/transactions/${editingId}`
 : `${API_URL}/transactions`;
-
 const method = editingId ? "PUT" : "POST";
-
 const res = await fetch(url,{
 method,
 headers:{
@@ -162,32 +105,22 @@ Authorization:`Bearer ${token}`
 },
 body: JSON.stringify(body)
 });
-
 const data = await res.json();
-
 if(!res.ok){
 alert(data.msg || "Erro ao salvar");
 return;
 }
-
 }catch(err){
 console.log("Erro ao salvar", err);
 alert("Erro de conexão com servidor");
 }
-
 setDescription("");
 setAmount("");
 setCategory("");
 setDate("");
 setEditingId(null);
-
 fetchTransactions();
 };
-
-
-// =========================
-// EDITAR
-// =========================
 
 const editTransaction=(t)=>{
 setEditingId(t.id);
@@ -198,92 +131,47 @@ setCategory(t.category);
 setDate(t.date);
 };
 
-
-// =========================
-// DELETE
-// =========================
-
 const deleteTransaction = async(id)=>{
-
 try{
-
-await fetch(
-`${API_URL}/transactions/${id}`,
-{
+await fetch(`${API_URL}/transactions/${id}`,{
 method:"DELETE",
 headers:{Authorization:`Bearer ${token}`}
-}
-);
-
+});
 }catch(err){
 console.log("Erro ao deletar",err);
 }
-
 fetchTransactions();
-
 };
 
-
-// =========================
-// CALCULOS
-// =========================
-
-const income = filtered
-.filter(t=>t.type==="income")
-.reduce((a,b)=>a+b.amount,0);
-
-const expense = filtered
-.filter(t=>t.type==="expense")
-.reduce((a,b)=>a+b.amount,0);
-
+const income = filtered.filter(t=>t.type==="income").reduce((a,b)=>a+b.amount,0);
+const expense = filtered.filter(t=>t.type==="expense").reduce((a,b)=>a+b.amount,0);
 const balance = income - expense;
 
-
-// =========================
-// GRAFICOS
-// =========================
-
 const categoryMap={};
-
 filtered.forEach(t=>{
 const cat = t.category || "Outros";
 if(!categoryMap[cat]) categoryMap[cat]=0;
 categoryMap[cat]+=t.amount;
 });
-
-const chartData = Object.keys(categoryMap).map(cat=>({
-name:cat,
-value:categoryMap[cat]
-}));
+const chartData = Object.keys(categoryMap).map(cat=>({ name:cat, value:categoryMap[cat] }));
 
 const monthMap={};
-
 filtered.forEach(t=>{
 if(!t.date) return;
 const m=t.date.substring(0,7);
-if(!monthMap[m])
-monthMap[m]={month:m,income:0,expense:0};
-if(t.type==="income")
-monthMap[m].income+=t.amount;
-else
-monthMap[m].expense+=t.amount;
+if(!monthMap[m]) monthMap[m]={month:m,income:0,expense:0};
+if(t.type==="income") monthMap[m].income+=t.amount;
+else monthMap[m].expense+=t.amount;
 });
-
 const monthlyData = Object.values(monthMap);
 
 let runningBalance = 0;
-
 const balanceData = [...filtered]
 .sort((a,b)=> new Date(a.date)-new Date(b.date))
 .map(t=>{
 runningBalance += t.type==="income" ? t.amount : -t.amount;
 return {date:t.date,balance:runningBalance};
 });
-
-
-// =========================
-// UI
-// =========================
 
 if(loading){
 return <h2 style={{color:"white",padding:"20px"}}>Carregando...</h2>
@@ -293,80 +181,81 @@ return(
 
 <div style={container}>
 
-<Sidebar
-sidebarOpen={sidebarOpen}
-setSidebarOpen={setSidebarOpen}
-/>
+<Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
 <div style={main}>
 
-<h1>Painel Financeiro</h1>
+  {/* TOPO COM LOGO GIF */}
+  <div style={topHeader}>
+    <img
+      src={logoGif}
+      alt="Finance Control"
+      style={logoStyle}
+    />
+    <h1 style={pageTitle}>Painel Financeiro</h1>
+  </div>
 
-<Filters
-filterYear={filterYear}
-setFilterYear={setFilterYear}
-filterMonth={filterMonth}
-setFilterMonth={setFilterMonth}
-filterType={filterType}
-setFilterType={setFilterType}
-clearFilters={clearFilters}
-inputStyle={inputStyle}
-/>
+  <Filters
+    filterYear={filterYear}
+    setFilterYear={setFilterYear}
+    filterMonth={filterMonth}
+    setFilterMonth={setFilterMonth}
+    filterType={filterType}
+    setFilterType={setFilterType}
+    clearFilters={clearFilters}
+    inputStyle={inputStyle}
+  />
 
-<div style={cards}>
+  <div style={cards}>
+    <div style={card}>
+      Entradas
+      <h2 style={{color:"#00ff88"}}>R$ {income}</h2>
+    </div>
+    <div style={card}>
+      Saídas
+      <h2 style={{color:"#ff4d4d"}}>- R$ {expense}</h2>
+    </div>
+    <div style={card}>
+      Saldo
+      <h2>R$ {balance}</h2>
+    </div>
+  </div>
 
-<div style={card}>
-Entradas
-<h2 style={{color:"#00ff88"}}>R$ {income}</h2>
-</div>
+  <TransactionForm
+    editingId={editingId}
+    handleSubmit={handleSubmit}
+    description={description}
+    setDescription={setDescription}
+    amount={amount}
+    setAmount={setAmount}
+    type={type}
+    setType={setType}
+    category={category}
+    setCategory={setCategory}
+    date={date}
+    setDate={setDate}
+    form={form}
+    inputStyle={inputStyle}
+    card={card}
+  />
 
-<div style={card}>
-Saídas
-<h2 style={{color:"#ff4d4d"}}>- R$ {expense}</h2>
-</div>
+  <div style={charts}>
+    <CategoryChart chartData={chartData} card={card} />
+    <MonthlyChart monthlyData={monthlyData} card={card} />
+    <BalanceChart data={balanceData} card={card} />
+  </div>
 
-<div style={card}>
-Saldo
-<h2>R$ {balance}</h2>
-</div>
-
-</div>
-
-<TransactionForm
-editingId={editingId}
-handleSubmit={handleSubmit}
-description={description}
-setDescription={setDescription}
-amount={amount}
-setAmount={setAmount}
-type={type}
-setType={setType}
-category={category}
-setCategory={setCategory}
-date={date}
-setDate={setDate}
-form={form}
-inputStyle={inputStyle}
-card={card}
-/>
-
-<div style={charts}>
-<CategoryChart chartData={chartData} card={card} />
-<MonthlyChart monthlyData={monthlyData} card={card} />
-<BalanceChart data={balanceData} card={card} />
-</div>
-
-<div id="transactions">
-<TransactionList
-filtered={filtered}
-editTransaction={editTransaction}
-deleteTransaction={deleteTransaction}
-row={row}
-editBtn={editBtn}
-deleteBtn={deleteBtn}
-card={card}
-/>
-</div>
+  <div id="transactions">
+    <TransactionList
+      filtered={filtered}
+      editTransaction={editTransaction}
+      deleteTransaction={deleteTransaction}
+      row={row}
+      editBtn={editBtn}
+      deleteBtn={deleteBtn}
+      card={card}
+    />
+  </div>
 
 </div>
 
@@ -375,7 +264,6 @@ card={card}
 );
 
 }
-
 
 // =========================
 // ESTILOS
@@ -392,7 +280,31 @@ backgroundPosition:"center",
 backgroundSize:"1200px"
 };
 
-const main={flex:1,padding:"40px"};
+const main={ flex:1, padding:"40px" };
+
+const topHeader={
+display:"flex",
+alignItems:"center",
+justifyContent:"center",
+flexDirection:"column",
+marginBottom:"24px",
+gap:"8px"
+};
+
+const logoStyle={
+width:"200px",
+height:"200px",
+objectFit:"contain",
+filter:"drop-shadow(0 0 14px rgba(255,255,255,0.4))"
+};
+
+const pageTitle={
+fontSize:"24px",
+fontWeight:"600",
+margin:0,
+letterSpacing:"1px",
+color:"white"
+};
 
 const cards={
 display:"grid",
