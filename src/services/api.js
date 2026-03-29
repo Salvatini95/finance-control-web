@@ -1,5 +1,9 @@
 const API_URL = "http://localhost:5000/api";
 
+// =========================
+// AUTH
+// =========================
+
 export async function loginUser(email, password) {
   const response = await fetch(`${API_URL}/login`, {
     method: "POST",
@@ -9,14 +13,18 @@ export async function loginUser(email, password) {
   return response;
 }
 
-export async function registerUser(email, password) {
+export async function registerUser(email, password, name) {
   const response = await fetch(`${API_URL}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, name }),
   });
   return response;
 }
+
+// =========================
+// HELPER — TOKEN
+// =========================
 
 export function getAuthHeaders() {
   const token = localStorage.getItem("token");
@@ -25,6 +33,10 @@ export function getAuthHeaders() {
     Authorization: `Bearer ${token}`,
   };
 }
+
+// =========================
+// TRANSAÇÕES
+// =========================
 
 export async function getTransactions() {
   const response = await fetch(`${API_URL}/transactions`, {

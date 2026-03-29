@@ -4,7 +4,7 @@ import { loginUser, registerUser } from "../services/api"
 import logoImg from "../assets/logo.gif"
 
 // =========================
-// CANVAS — NÚMEROS FLUTUANDO
+// CANVAS — NÚMEROS FLUTUANDO (OTIMIZADO)
 // =========================
 
 function FloatingNumbers() {
@@ -12,7 +12,7 @@ function FloatingNumbers() {
 
   useEffect(() => {
     const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
+    const ctx = canvas.getContext("2d", { willReadFrequently: false })
 
     const resize = () => {
       canvas.width = window.innerWidth
@@ -22,16 +22,16 @@ function FloatingNumbers() {
     window.addEventListener("resize", resize)
 
     const symbols = [
-      "+2.4%", "R$", "↑", "▲", "1.847", "∑", "%",
-      "+R$320", "▲12%", "0.98", "€", "$", "∞",
-      "+4.1%", "◆", "3.500", "↗", "R$1k", "−0.3%",
-      "52.4", "▼", "R$890", "+18%", "∫", "Σ"
+      "+2.4%", "R$", "↑", "▲", "1.847", "%",
+      "+R$320", "▲12%", "€", "$", "+4.1%",
+      "3.500", "↗", "R$1k", "▼", "+18%"
     ]
 
+    // ✅ Menos partículas, sem blur = muito mais rápido
     const layers = [
-      { count: 18, speedMin: 0.8, speedMax: 1.4, sizeMin: 9,  sizeMax: 13, opacityMax: 0.08, blur: 2   },
-      { count: 14, speedMin: 1.4, speedMax: 2.2, sizeMin: 13, sizeMax: 18, opacityMax: 0.15, blur: 0.5 },
-      { count: 10, speedMin: 2.2, speedMax: 3.2, sizeMin: 18, sizeMax: 28, opacityMax: 0.28, blur: 0   },
+      { count: 8,  speedMin: 0.6, speedMax: 1.0, sizeMin: 9,  sizeMax: 12, opacityMax: 0.12 },
+      { count: 6,  speedMin: 1.0, speedMax: 1.6, sizeMin: 12, sizeMax: 16, opacityMax: 0.18 },
+      { count: 5,  speedMin: 1.6, speedMax: 2.4, sizeMin: 16, sizeMax: 24, opacityMax: 0.30 },
     ]
 
     const particles = []
@@ -45,43 +45,60 @@ function FloatingNumbers() {
           maxOpacity: 0.04 + Math.random() * layer.opacityMax,
           size: layer.sizeMin + Math.random() * (layer.sizeMax - layer.sizeMin),
           symbol: symbols[Math.floor(Math.random() * symbols.length)],
-          drift: (Math.random() - 0.5) * 0.25,
+          drift: (Math.random() - 0.5) * 0.2,
           layer: layerIndex,
-          blur: layer.blur
+          positive: null
         })
       }
     })
 
+    // Pré-calcula se é positivo para não usar regex no loop
+    particles.forEach(p => {
+      p.positive = /[+▲↑↗]/.test(p.symbol)
+    })
+
     let animId
-    const animate = () => {
+    let lastTime = 0
+
+    const animate = (timestamp) => {
+      // ✅ Limita a 30fps para economizar CPU
+      if (timestamp - lastTime < 33) {
+        animId = requestAnimationFrame(animate)
+        return
+      }
+      lastTime = timestamp
+
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      ;[0, 1, 2].forEach(layerIndex => {
-        particles.filter(p => p.layer === layerIndex).forEach(p => {
-          p.y -= p.speed
-          p.x += p.drift
-          if (p.opacity < p.maxOpacity) p.opacity += 0.002
-          if (p.y < canvas.height * 0.25) p.opacity -= 0.005
-          if (p.y < -40 || p.opacity <= 0) {
-            p.y = canvas.height + Math.random() * 150
-            p.x = Math.random() * canvas.width
-            p.opacity = 0
-            p.symbol = symbols[Math.floor(Math.random() * symbols.length)]
-            p.speed = layers[layerIndex].speedMin +
-              Math.random() * (layers[layerIndex].speedMax - layers[layerIndex].speedMin)
-          }
-          ctx.save()
-          ctx.globalAlpha = p.opacity
-          if (p.blur > 0) ctx.filter = `blur(${p.blur}px)`
-          const isPositive = /[+▲↑↗]/.test(p.symbol)
-          ctx.fillStyle = isPositive ? "#22c55e" : "#818cf8"
-          ctx.font = `${Math.round(p.size)}px 'Inter', monospace`
-          ctx.fillText(p.symbol, p.x, p.y)
-          ctx.restore()
-        })
+
+      particles.forEach(p => {
+        p.y -= p.speed
+        p.x += p.drift
+
+        if (p.opacity < p.maxOpacity) p.opacity += 0.003
+        if (p.y < canvas.height * 0.2) p.opacity -= 0.006
+
+        if (p.y < -40 || p.opacity <= 0) {
+          p.y = canvas.height + Math.random() * 150
+          p.x = Math.random() * canvas.width
+          p.opacity = 0
+          const newSymbol = symbols[Math.floor(Math.random() * symbols.length)]
+          p.symbol = newSymbol
+          p.positive = /[+▲↑↗]/.test(newSymbol)
+          p.speed = layers[p.layer].speedMin +
+            Math.random() * (layers[p.layer].speedMax - layers[p.layer].speedMin)
+        }
+
+        ctx.globalAlpha = p.opacity
+        ctx.fillStyle = p.positive ? "#22c55e" : "#818cf8"
+        ctx.font = `${Math.round(p.size)}px monospace`
+        ctx.fillText(p.symbol, p.x, p.y)
       })
+
+      ctx.globalAlpha = 1
       animId = requestAnimationFrame(animate)
     }
-    animate()
+
+    animId = requestAnimationFrame(animate)
 
     return () => {
       cancelAnimationFrame(animId)
@@ -111,6 +128,7 @@ function FloatingNumbers() {
 
 function Login() {
   const [isRegister, setIsRegister] = useState(false)
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -127,6 +145,7 @@ function Login() {
 
   const toggleMode = () => {
     setIsRegister(!isRegister)
+    setName("")
     setEmail("")
     setPassword("")
     setConfirmPassword("")
@@ -140,6 +159,11 @@ function Login() {
     setError("")
     setSuccess("")
 
+    if (isRegister && !name.trim()) {
+      setError("Nome é obrigatório")
+      setLoading(false)
+      return
+    }
     if (isRegister && password !== confirmPassword) {
       setError("As senhas não coincidem")
       setLoading(false)
@@ -153,11 +177,12 @@ function Login() {
 
     try {
       if (isRegister) {
-        const response = await registerUser(email, password)
+        const response = await registerUser(email, password, name)
         const data = await response.json()
         if (response.ok) {
           setSuccess("Conta criada com sucesso! Faça login.")
           setIsRegister(false)
+          setName("")
           setEmail("")
           setPassword("")
           setConfirmPassword("")
@@ -169,6 +194,8 @@ function Login() {
         const data = await response.json()
         if (response.ok) {
           localStorage.setItem("token", data.token)
+          localStorage.setItem("userName", data.name || "")
+          localStorage.setItem("userEmail", data.email || "")
           navigate("/dashboard")
         } else {
           setError(data.msg || "Email ou senha inválidos")
@@ -192,11 +219,7 @@ function Login() {
 
         {/* BRANDING */}
         <div style={branding}>
-          <img
-            src={logoImg}
-            alt="Finance Control Logo"
-            style={logoStyle}
-          />
+          <img src={logoImg} alt="Finance Control Logo" style={logoStyle} />
           <h1 style={brandTitle}>FINANCE CONTROL</h1>
           <p style={brandSubtitle}>Gerencie suas finanças com inteligência e clareza.</p>
         </div>
@@ -224,6 +247,28 @@ function Login() {
           {success && <div style={alertSuccess}>✅ {success}</div>}
 
           <form onSubmit={handleSubmit} style={formBody}>
+
+            {isRegister && (
+              <div style={fieldGroup}>
+                <label style={fieldLabel}>Nome completo</label>
+                <input
+                  type="text"
+                  placeholder="Seu nome"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  style={inputStyle}
+                  onFocus={e => {
+                    e.target.style.borderColor = "rgba(99,102,241,0.6)"
+                    e.target.style.background = "rgba(255,255,255,0.1)"
+                  }}
+                  onBlur={e => {
+                    e.target.style.borderColor = "rgba(255,255,255,0.15)"
+                    e.target.style.background = "rgba(255,255,255,0.06)"
+                  }}
+                  required
+                />
+              </div>
+            )}
 
             <div style={fieldGroup}>
               <label style={fieldLabel}>Email</label>
@@ -341,14 +386,7 @@ const cityBg = { position: "fixed", inset: 0, backgroundImage: `url("https://ima
 const overlay = { position: "fixed", inset: 0, background: `linear-gradient(180deg, rgba(2,6,23,0.7) 0%, rgba(2,6,23,0.4) 50%, rgba(2,6,23,0.8) 100%), radial-gradient(ellipse at 50% 50%, rgba(99,102,241,0.12) 0%, transparent 70%)`, zIndex: 1 }
 const centerLayout = { position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: "28px", width: "100%", maxWidth: "520px", padding: "40px 20px" }
 const branding = { textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "0px" }
-
-const logoStyle = {
-  width: "300px",
-  height: "300px",
-  objectFit: "contain",
-  marginBottom: "0px"
-}
-
+const logoStyle = { width: "300px", height: "300px", objectFit: "contain", marginBottom: "0px" }
 const brandTitle = { fontSize: "32px", fontWeight: "400", color: "white", margin: "0 0 8px 0", letterSpacing: "8px", fontFamily: "'Bodoni Moda', 'Bodoni MT', Georgia, serif" }
 const brandSubtitle = { fontSize: "13px", color: "rgba(255,255,255,0.45)", margin: 0, letterSpacing: "1px", fontFamily: "'Times New Roman', Times, serif", fontWeight: "400" }
 const inteachCard = { width: "100%", position: "relative", background: "rgba(15,20,40,0.0)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.08)", borderTop: "1px solid rgba(210,210,255,0.55)", borderLeft: "1px solid rgba(180,180,240,0.35)", padding: "40px", clipPath: "polygon(24px 0%, 100% 0%, 100% calc(100% - 24px), calc(100% - 24px) 100%, 0% 100%, 0% 24px)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), inset 1px 0 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.5)" }
