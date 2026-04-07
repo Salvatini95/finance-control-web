@@ -1,33 +1,32 @@
-# 💻 Finance Control — Web
+# 💻 SV Finance Control — Web
 
-Interface web do sistema de controle financeiro pessoal desenvolvido em React.
+Interface web do sistema de gestão financeira empresarial desenvolvido em React + Vite.
 
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?logo=javascript)
-![Tailwind](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css)
 ![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?logo=vite)
+![JWT](https://img.shields.io/badge/Auth-JWT-orange)
 
-> 🔗 Backend: [finance-control-api](https://github.com/Salvatini95/finance-control-api)
-
----
-
-## 📸 Telas
-
-> Login, Dashboard, Analytics e Transações
-
-<!-- Adicione prints aqui depois -->
+> 🔗 Backend: [controle_financeiro](https://github.com/Salvatini95/controle_financeiro)
 
 ---
 
 ## ✨ Funcionalidades
 
-- 🔐 Tela de login e cadastro com animação de números financeiros
-- 📊 Dashboard com gráficos de saldo, categorias e entradas vs saídas
-- 📋 Página de transações estilo planilha com filtros e ordenação
-- ✏️ Edição e exclusão de transações via modal
-- 📈 Página de Analytics com gráficos avançados
-- 🧭 Sidebar retrátil com navegação entre páginas
-- 📱 Compatível com rede local (acesso via celular e outros PCs)
+- 🔐 Login e cadastro de empresa com animação de números financeiros
+- 🏢 Multi-tenant — cada empresa tem seus próprios dados isolados
+- 👥 Gestão de equipe com roles (Admin, Financeiro, Vendedor, Estoque, Visualizador)
+- 🔒 Sidebar e rotas protegidas por role de usuário
+- 📊 Dashboard financeiro com gráficos de saldo, entradas e saídas
+- 📋 Transações com filtros por origem, tipo e mês
+- 📄 Contas a pagar e receber
+- 📈 Analytics avançado
+- 🧾 Orçamentos com impressão em PDF (tema escuro e claro)
+- 🛒 Fluxo completo: Orçamento → Aprovação → Venda → Conclusão
+- 📦 Produtos e serviços com controle de estoque e estoque inicial
+- 👤 Clientes com histórico de pedidos
+- 🎨 4 temas visuais: Azul/Roxo, Glass e Gelo, Aurora Glass, Cinza/Prata
+- 📱 Responsivo — mobile e desktop
 
 ---
 
@@ -36,84 +35,80 @@ Interface web do sistema de controle financeiro pessoal desenvolvido em React.
 | Tecnologia | Uso |
 |---|---|
 | React 18 | Interface |
-| React Router DOM | Navegação entre páginas |
-| Recharts | Gráficos interativos |
-| Tailwind CSS | Estilização |
+| React Router DOM | Navegação e rotas protegidas |
 | Vite | Bundler e servidor de desenvolvimento |
+| Recharts | Gráficos interativos |
+| Context API | Gerenciamento de temas |
+| JWT (localStorage) | Autenticação |
 
 ---
 
 ## 📁 Estrutura
-```
 src/
+├── assets/
 ├── components/
-│   ├── charts/          # BalanceChart, CategoryChart, MonthlyChart, HeatmapChart
-│   ├── filters/         # Filtros reutilizáveis
-│   ├── layout/          # Sidebar
-│   └── transactions/    # TransactionForm, TransactionList
+│   ├── layout/
+│   │   ├── PageLayout.jsx
+│   │   └── Sidebar.jsx
+│   └── ProtectedRoute.jsx
+├── contexts/
+│   └── ThemeContext.jsx
+├── themes/
+│   └── themes.js
 ├── pages/
-│   ├── Dashboard.jsx    # Painel principal com gráficos
-│   ├── Analytics.jsx    # Análises avançadas
-│   ├── Transactions.jsx # Planilha de transações
-│   └── Login.jsx        # Login e cadastro
+│   ├── Login.jsx
+│   ├── Dashboard.jsx
+│   ├── Transactions.jsx
+│   ├── Bills.jsx
+│   ├── Analytics.jsx
+│   ├── Products.jsx
+│   ├── Quotes.jsx
+│   ├── Sales.jsx
+│   ├── Clients.jsx
+│   ├── Team.jsx
+│   └── Settings.jsx
 └── services/
-    └── api.js           # Funções de comunicação com o backend
-```
-
+└── api.js
 ---
 
 ## 🚀 Como rodar localmente
 
 ### Pré-requisitos
 - Node.js 18+
-- Backend rodando ([finance-control-api](https://github.com/Salvatini95/finance-control-api))
+- Backend rodando
 
 ### Instalação
-```bash
-# Clone o repositório
 git clone https://github.com/Salvatini95/finance-control-web.git
-
-# Entre na pasta
 cd finance-control-web
-
-# Instale as dependências
 npm install
-```
-
-### Configuração
-
-Crie um arquivo `.env` na raiz do projeto:
-```
-VITE_API_URL=http://localhost:5000/api
-```
-
-> Para acesso em rede local, substitua `localhost` pelo IP da máquina que roda o backend.
-
-### Execução
-```bash
 npm run dev
-```
 
-> Acesse em: `http://localhost:5173`
+Acesse em: http://localhost:5173
 
 ---
 
-## 🔒 Autenticação
+## 🔒 Autenticação e Permissões
 
-- Login e cadastro integrados com JWT
-- Token salvo no `localStorage`
-- Rotas protegidas com `ProtectedRoute`
-- Redirecionamento automático para login se token inválido
+- Login com JWT — token salvo no localStorage com expiração de 8h
+- Rotas protegidas por ProtectedRoute com suporte a roles
+- Sidebar filtra itens visíveis conforme o role do usuário
+
+| Role | Acesso |
+|---|---|
+| Admin | Tudo |
+| Financeiro | Transações, Contas, Analytics |
+| Vendedor | Clientes, Orçamentos, Vendas, Produtos |
+| Estoque | Produtos e movimentações |
+| Visualizador | Leitura geral |
 
 ---
 
 ## 🗺️ Próximos passos
 
-- [ ] Página de perfil do usuário
-- [ ] Exportar relatórios em PDF
-- [ ] Filtros avançados por período
+- [ ] Dashboard personalizado por role
+- [ ] Analytics por vendedor
+- [ ] Relatórios em PDF
 - [ ] Deploy em produção (Vercel)
-- [ ] Tema claro/escuro
 
 ---
 
