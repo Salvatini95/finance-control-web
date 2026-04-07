@@ -43,6 +43,9 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
     ? "4px 0 24px rgba(0,0,0,0.1), inset 1px 0 0 rgba(255,255,255,0.5)"
     : "4px 0 24px rgba(0,0,0,0.4), inset 1px 0 0 rgba(255,255,255,0.06)";
 
+  // ══════════════════════════════
+  // MOBILE
+  // ══════════════════════════════
   if (isMobile) {
     return (
       <>
@@ -74,18 +77,19 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
           transform: mobileOpen?"translateX(0)":"translateX(-100%)",
           boxShadow: isGlass?"8px 0 32px rgba(0,0,0,0.15)":"8px 0 32px rgba(0,0,0,0.5)",
         }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"20px 20px 16px", borderBottom:`1px solid ${sidebarBorder}` }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"20px 20px 16px", borderBottom:`1px solid ${sidebarBorder}`, flexShrink:0 }}>
             <span style={{ fontSize:18, fontWeight:700, color:theme.textPrimary, letterSpacing:1 }}>Finance</span>
             <button onClick={() => setMobileOpen(false)} style={{ background: isGlass?"rgba(255,255,255,0.3)":`${theme.primary}22`, border:"none", color:theme.textPrimary, borderRadius:8, width:32, height:32, cursor:"pointer", fontSize:14 }}>✕</button>
           </div>
 
-          <div style={{ flex:1, padding:"16px 12px", display:"flex", flexDirection:"column", gap:6, overflowY:"auto" }}>
+          <div style={{ flex:1, padding:"16px 12px", display:"flex", flexDirection:"column", gap:6, overflowY:"auto", minHeight:0 }}>
             {menuItems.map(item => (
               <Link key={item.to} to={item.to} onClick={() => setMobileOpen(false)} style={{
                 display:"flex", alignItems:"center", gap:14,
                 padding:"14px 16px", borderRadius:12,
                 textDecoration:"none", color:theme.textPrimary,
                 fontSize:15, fontWeight:500, transition:"all 0.2s",
+                flexShrink:0,
                 background: isActive(item.to) ? (isGlass?"rgba(255,255,255,0.35)":theme.sidebarActive) : "transparent",
                 border: isActive(item.to) ? `1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.sidebarBorder}` : "1px solid transparent",
               }}>
@@ -95,14 +99,19 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
             ))}
           </div>
 
-          <button onClick={handleLogout} style={{ margin:"0 12px 24px", padding:"14px 16px", background: isGlass?"rgba(239,68,68,0.12)":"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.25)", borderRadius:12, color:"#ef4444", fontSize:15, fontWeight:600, cursor:"pointer", textAlign:"left" }}>
-            🚪 Sair
-          </button>
+          <div style={{ padding:"12px", flexShrink:0 }}>
+            <button onClick={handleLogout} style={{ width:"100%", padding:"14px 16px", background: isGlass?"rgba(239,68,68,0.12)":"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.25)", borderRadius:12, color:"#ef4444", fontSize:15, fontWeight:600, cursor:"pointer", textAlign:"left" }}>
+              🚪 Sair
+            </button>
+          </div>
         </div>
       </>
     );
   }
 
+  // ══════════════════════════════
+  // DESKTOP
+  // ══════════════════════════════
   return (
     <div
       style={{
@@ -111,20 +120,24 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
         backdropFilter:sidebarBackdrop, WebkitBackdropFilter:sidebarBackdrop,
         borderRight:`1px solid ${sidebarBorder}`,
         boxShadow:sidebarBoxShadow,
-        padding:"20px 10px", transition:"all 0.3s ease",
+        padding:"20px 10px 10px", transition:"all 0.3s ease",
         overflow:"hidden",
         width: sidebarOpen?"220px":"70px",
-        display:"flex", flexDirection:"column", justifyContent:"space-between",
+        display:"flex", flexDirection:"column",
         zIndex:100,
       }}
       onMouseEnter={() => setSidebarOpen(true)}
       onMouseLeave={() => setSidebarOpen(false)}
     >
-      <div>
-        <h2 style={{ opacity: sidebarOpen?1:0, transition:"0.3s", whiteSpace:"nowrap", marginBottom:"40px", fontWeight:"600", letterSpacing:"1px", color:theme.textPrimary }}>
+      {/* LOGO */}
+      <div style={{ flexShrink:0, marginBottom:"20px" }}>
+        <h2 style={{ opacity: sidebarOpen?1:0, transition:"0.3s", whiteSpace:"nowrap", margin:0, fontWeight:"600", letterSpacing:"1px", color:theme.textPrimary }}>
           Finance
         </h2>
+      </div>
 
+      {/* MENU COM SCROLL */}
+      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", minHeight:0 }}>
         {menuItems.map(item => (
           <MenuItem
             key={item.to}
@@ -139,9 +152,10 @@ function Sidebar({ sidebarOpen, setSidebarOpen }) {
         ))}
       </div>
 
-      <div>
+      {/* BOTÃO SAIR — sempre visível */}
+      <div style={{ flexShrink:0, borderTop:`1px solid ${sidebarBorder}`, paddingTop:"10px", marginTop:"10px" }}>
         <div
-          style={{ padding:"12px", cursor:"pointer", borderRadius:"10px", transition:"all 0.2s ease", marginBottom:"10px", marginTop:"20px", borderTop:`1px solid ${sidebarBorder}`, paddingTop:"15px" }}
+          style={{ padding:"12px", cursor:"pointer", borderRadius:"10px", transition:"all 0.2s ease" }}
           onMouseEnter={e => e.currentTarget.style.background="rgba(239,68,68,0.12)"}
           onMouseLeave={e => e.currentTarget.style.background="transparent"}
           onClick={handleLogout}
@@ -163,7 +177,7 @@ function MenuItem({ to, icon, label, active, sidebarOpen, theme, isGlass }) {
 
   return (
     <div
-      style={{ padding:"12px", cursor:"pointer", borderRadius:"10px", transition:"all 0.2s ease", marginBottom:"10px", background: active?activeBg:"transparent", border: active?`1px solid ${activeBorder}`:"1px solid transparent", boxShadow: active?(isGlass?"0 4px 16px rgba(0,0,0,0.08)":`0 4px 16px ${theme.sidebarShadow}`):"none", position:"relative" }}
+      style={{ padding:"12px", cursor:"pointer", borderRadius:"10px", transition:"all 0.2s ease", marginBottom:"6px", background: active?activeBg:"transparent", border: active?`1px solid ${activeBorder}`:"1px solid transparent", boxShadow: active?(isGlass?"0 4px 16px rgba(0,0,0,0.08)":`0 4px 16px ${theme.sidebarShadow}`):"none" }}
       onMouseEnter={e => { if (!active) e.currentTarget.style.background=hoverBg; }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background="transparent"; }}
     >
