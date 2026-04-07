@@ -44,7 +44,7 @@ Interface web do sistema de gestão financeira empresarial desenvolvido em React
 ---
 
 ## 📁 Estrutura
-'''
+```
 src/
 ├── assets/
 ├── components/
@@ -69,8 +69,8 @@ src/
 │   ├── Team.jsx
 │   └── Settings.jsx
 └── services/
-└── api.js
-'''
+    └── api.js
+```
 ---
 
 ## 🚀 Como rodar localmente
