@@ -31,9 +31,11 @@ export default function Analytics() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
-  const role     = localStorage.getItem("role")  || "viewer";
-  const myUserId = parseInt(localStorage.getItem("user_id") || "0");
-  const token    = localStorage.getItem("token");
+  const role        = localStorage.getItem("role")         || "viewer";
+  const accountType = localStorage.getItem("account_type") || "business";
+  const isPersonal  = accountType === "personal";
+  const myUserId    = parseInt(localStorage.getItem("user_id") || "0");
+  const token       = localStorage.getItem("token");
 
   const [transactions, setTransactions] = useState([]);
   const [bills, setBills]               = useState([]);
@@ -43,8 +45,8 @@ export default function Analytics() {
   const [loading, setLoading]           = useState(true);
   const [filterYear, setFilterYear]     = useState("");
   const [filterMonth, setFilterMonth]   = useState("");
-  const [filterSeller, setFilterSeller] = useState("all"); // ✅ filtro por vendedor
-  const [activeTab, setActiveTab]       = useState("financeiro"); // financeiro | vendas
+  const [filterSeller, setFilterSeller] = useState("all");
+  const [activeTab, setActiveTab]       = useState("financeiro");
   const [activeCategory, setActiveCategory] = useState(null);
 
   const fetchData = async () => {
@@ -54,21 +56,29 @@ export default function Analytics() {
       const requests = [
         fetch(`${API_URL}/transactions`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_URL}/bills`,        { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/orders`,       { headers: { Authorization: `Bearer ${token}` } }),
       ];
-      if (role === "admin" || role === "financial") {
-        requests.push(fetch(`${API_URL}/company/users`, { headers: { Authorization: `Bearer ${token}` } }));
+
+      // orders só para business
+      if (!isPersonal) {
+        requests.push(fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } }));
+        if (role === "admin" || role === "financial") {
+          requests.push(fetch(`${API_URL}/company/users`, { headers: { Authorization: `Bearer ${token}` } }));
+        }
       }
 
       const responses = await Promise.all(requests);
       if (responses[0].status === 401) { localStorage.removeItem("token"); navigate("/"); return; }
 
-      const [dataT, dataB, dataO] = await Promise.all([responses[0].json(), responses[1].json(), responses[2].json()]);
+      const dataT = await responses[0].json();
+      const dataB = await responses[1].json();
       setTransactions(Array.isArray(dataT) ? dataT : []);
       setBills(Array.isArray(dataB) ? dataB : []);
-      setOrders(Array.isArray(dataO) ? dataO : []);
 
-      if (responses[3]) {
+      if (!isPersonal && responses[2]) {
+        const dataO = await responses[2].json();
+        setOrders(Array.isArray(dataO) ? dataO : []);
+      }
+      if (!isPersonal && responses[3]) {
         const dataU = await responses[3].json();
         setTeamUsers(Array.isArray(dataU) ? dataU : []);
       }
@@ -80,12 +90,11 @@ export default function Analytics() {
 
   const safe = Array.isArray(transactions) ? transactions : [];
   const filtered = safe.filter(t => {
-    const yearOk   = !filterYear  || t.date?.startsWith(filterYear);
-    const monthOk  = !filterMonth || t.date?.substring(5, 7) === filterMonth;
+    const yearOk  = !filterYear  || t.date?.startsWith(filterYear);
+    const monthOk = !filterMonth || t.date?.substring(5, 7) === filterMonth;
     return yearOk && monthOk;
   });
 
-  // ✅ orders filtradas por vendedor
   const filteredOrders = orders.filter(o => {
     const sellerOk = filterSeller === "all" || String(o.user_id) === String(filterSeller);
     const yearOk   = !filterYear  || o.created_at?.startsWith(filterYear);
@@ -131,11 +140,11 @@ export default function Analytics() {
   const avgIncome    = monthlyData.length > 0 ? totalIncome  / monthlyData.length : 0;
   const avgExpense   = monthlyData.length > 0 ? totalExpense / monthlyData.length : 0;
 
-  const pieData      = [{ name:"Entradas", value:totalIncome }, { name:"Saídas", value:totalExpense }];
-  const top5Expense  = Object.values(categoryMap).filter(c=>c.expense>0).sort((a,b)=>b.expense-a.expense).slice(0,5).map(c=>({ category:c.name, value:c.expense }));
-  const radarData    = categoryData.slice(0,6).map(c=>({ category:c.name, Entradas:c.income, Saídas:c.expense }));
+  const pieData     = [{ name:"Entradas", value:totalIncome }, { name:"Saídas", value:totalExpense }];
+  const top5Expense = Object.values(categoryMap).filter(c=>c.expense>0).sort((a,b)=>b.expense-a.expense).slice(0,5).map(c=>({ category:c.name, value:c.expense }));
+  const radarData   = categoryData.slice(0,6).map(c=>({ category:c.name, Entradas:c.income, Saídas:c.expense }));
 
-  const safeBills    = Array.isArray(bills) ? bills : [];
+  const safeBills      = Array.isArray(bills) ? bills : [];
   const billsChartData = [
     { name:"A Pagar",   value:safeBills.filter(b=>b.type==="payable"   &&b.status!=="paid").reduce((a,b)=>a+b.amount,0), color:"#ef4444" },
     { name:"A Receber", value:safeBills.filter(b=>b.type==="receivable"&&b.status!=="paid").reduce((a,b)=>a+b.amount,0), color:theme.primary },
@@ -144,7 +153,7 @@ export default function Analytics() {
     { name:"Vencidas",  value:safeBills.filter(b=>{ if(b.status==="paid") return false; const t=new Date(); t.setHours(0,0,0,0); return new Date(b.due_date+"T00:00:00")<t; }).reduce((a,b)=>a+b.amount,0), color:"#f59e0b" },
   ];
 
-  // ── dados de vendas por vendedor ──
+  // ── dados de vendas ──
   const sellerMap = {};
   orders.forEach(o => {
     const uid  = o.user_id;
@@ -152,12 +161,11 @@ export default function Analytics() {
     if (!sellerMap[uid]) sellerMap[uid] = { name, total:0, done:0, open:0, count:0 };
     sellerMap[uid].count++;
     sellerMap[uid].total += o.total;
-    if (o.status === "done") { sellerMap[uid].done++; sellerMap[uid].total += 0; }
+    if (o.status === "done") sellerMap[uid].done++;
     if (o.status === "open" || o.status === "in_progress") sellerMap[uid].open++;
   });
   const sellerRanking = Object.values(sellerMap).sort((a,b) => b.total - a.total);
 
-  // produtos mais vendidos nas vendas filtradas
   const productSalesMap = {};
   filteredOrders.forEach(o => {
     (o.items||[]).forEach(item => {
@@ -169,7 +177,6 @@ export default function Analytics() {
   });
   const topProducts = Object.values(productSalesMap).sort((a,b) => b.total - a.total).slice(0, 8);
 
-  // vendas por mês filtradas
   const orderMonthMap = {};
   filteredOrders.forEach(o => {
     if (!o.created_at) return;
@@ -180,10 +187,10 @@ export default function Analytics() {
   });
   const orderMonthlyData = Object.values(orderMonthMap).sort((a,b)=>a.month.localeCompare(b.month));
 
-  const totalVendido    = filteredOrders.filter(o=>o.status==="done").reduce((s,o)=>s+o.total,0);
-  const totalVendas     = filteredOrders.length;
-  const vendasConcluidas= filteredOrders.filter(o=>o.status==="done").length;
-  const vendasAbertas   = filteredOrders.filter(o=>o.status==="open"||o.status==="in_progress").length;
+  const totalVendido     = filteredOrders.filter(o=>o.status==="done").reduce((s,o)=>s+o.total,0);
+  const totalVendas      = filteredOrders.length;
+  const vendasConcluidas = filteredOrders.filter(o=>o.status==="done").length;
+  const vendasAbertas    = filteredOrders.filter(o=>o.status==="open"||o.status==="in_progress").length;
 
   const colorScheme  = isGlass ? "light" : "dark";
   const tooltipStyle = { background:theme.bgSecondary, border:`1px solid ${theme.borderCard}`, borderRadius:8, ...(isGlass && { backdropFilter:"blur(12px)", WebkitBackdropFilter:"blur(12px)" }) };
@@ -200,7 +207,7 @@ export default function Analytics() {
         .card3d-a { background:${theme.bgCard}; border:1px solid ${theme.borderCard}; border-radius:14px; padding:16px 20px; display:flex; flex-direction:column; gap:8px; transition:transform 0.3s ease, box-shadow 0.3s ease; transform:perspective(700px) rotateX(4deg) rotateY(-2deg); box-shadow:${isGlass?"0 4px 20px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.6)":"0 14px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)"}; ${isGlass?"backdrop-filter:blur(18px) saturate(180%); -webkit-backdrop-filter:blur(18px) saturate(180%);":"backdrop-filter:blur(8px);"} position:relative; overflow:hidden; }
         .card3d-a::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,${isGlass?"rgba(255,255,255,0.7)":"rgba(255,255,255,0.1)"},transparent); }
         .card3d-a:hover { transform:perspective(700px) rotateX(0deg) rotateY(0deg) translateY(-8px); box-shadow:${isGlass?"0 20px 48px rgba(0,0,0,0.1)":"0 28px 56px rgba(0,0,0,0.55)"}; }
-        @media (max-width:768px) { .chart3d-a { transform:none !important; } .chart3d-a:hover { transform:translateY(-3px) !important; } .card3d-a { transform:none !important; } .card3d-a:hover { transform:translateY(-4px) !important; } }
+        @media (max-width:768px) { .chart3d-a,.card3d-a { transform:none !important; } .chart3d-a:hover { transform:translateY(-3px) !important; } .card3d-a:hover { transform:translateY(-4px) !important; } }
       `}</style>
 
       <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
@@ -213,7 +220,9 @@ export default function Analytics() {
             <img src={logoGif} alt="logo" style={{ width: isMobile?44:60, height: isMobile?44:60, objectFit:"contain", filter:"drop-shadow(0 0 10px rgba(255,255,255,0.3))" }} />
             <div>
               <h1 style={{ fontSize: isMobile?"22px":"1.75rem", fontWeight:700, margin:0, color:theme.textPrimary }}>Analytics</h1>
-              <p style={{ color:theme.textMuted, margin:"4px 0 0", fontSize:"0.85rem" }}>Análise detalhada das suas finanças e vendas</p>
+              <p style={{ color:theme.textMuted, margin:"4px 0 0", fontSize:"0.85rem" }}>
+                {isPersonal ? "Análise das suas finanças pessoais" : "Análise detalhada das suas finanças e vendas"}
+              </p>
             </div>
           </div>
           <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", width: isMobile?"100%":"auto" }}>
@@ -233,8 +242,8 @@ export default function Analytics() {
           </div>
         </div>
 
-        {/* TABS — admin/financial vê as duas abas */}
-        {(role === "admin" || role === "financial") && (
+        {/* TABS — só business admin/financial */}
+        {!isPersonal && (role === "admin" || role === "financial") && (
           <div style={{ display:"flex", gap:8, marginBottom:28, borderBottom:`1px solid ${theme.borderCard}`, paddingBottom:0 }}>
             {[{ id:"financeiro", label:"💰 Financeiro" }, { id:"vendas", label:"🛒 Vendas & Equipe" }].map(tab => (
               <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{ background: activeTab===tab.id?`${theme.primary}22`:"transparent", color: activeTab===tab.id?theme.primary:theme.textMuted, border:"none", borderBottom: activeTab===tab.id?`2px solid ${theme.primary}`:"2px solid transparent", padding:"10px 20px", fontSize:"0.9rem", fontWeight:600, cursor:"pointer", borderRadius:"8px 8px 0 0", transition:"all 0.2s" }}>
@@ -245,18 +254,18 @@ export default function Analytics() {
         )}
 
         {/* ══════════════════════════════
-            ABA: FINANCEIRO
+            ABA FINANCEIRO (todos veem)
         ══════════════════════════════ */}
-        {(activeTab === "financeiro" || role === "viewer") && (
+        {(activeTab === "financeiro" || role === "viewer" || isPersonal) && (
           <>
             <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:28 }}>
               {[
-                { label:"Total Entradas",    value:fmt(totalIncome),  color:theme.income,   border:theme.income  },
-                { label:"Total Saídas",      value:fmt(totalExpense), color:theme.expense,  border:theme.expense },
+                { label:"Total Entradas",    value:fmt(totalIncome),  color:theme.income,  border:theme.income  },
+                { label:"Total Saídas",      value:fmt(totalExpense), color:theme.expense, border:theme.expense },
                 { label:"Saldo",             value:fmt(totalBalance), color:totalBalance>=0?theme.income:theme.expense, border:theme.accent },
-                { label:"Média Entrada/Mês", value:fmt(avgIncome),    color:theme.warning,  border:theme.warning },
-                { label:"Média Saída/Mês",   value:fmt(avgExpense),   color:theme.primary,  border:theme.primary },
-                { label:"Total Transações",  value:filtered.length,   color:theme.purple,   border:theme.purple  },
+                { label:"Média Entrada/Mês", value:fmt(avgIncome),    color:theme.warning, border:theme.warning },
+                { label:"Média Saída/Mês",   value:fmt(avgExpense),   color:theme.primary, border:theme.primary },
+                { label:"Total Transações",  value:filtered.length,   color:theme.purple,  border:theme.purple  },
               ].map((c,i) => (
                 <div key={i} className="card3d-a" style={{ borderLeft:`3px solid ${c.border}` }}>
                   <span style={{ fontSize:10, color:theme.textMuted, textTransform:"uppercase", letterSpacing:"0.5px" }}>{c.label}</span>
@@ -382,11 +391,10 @@ export default function Analytics() {
         )}
 
         {/* ══════════════════════════════
-            ABA: VENDAS & EQUIPE (admin/financial)
+            ABA VENDAS — só business admin/financial
         ══════════════════════════════ */}
-        {activeTab === "vendas" && (role === "admin" || role === "financial") && (
+        {activeTab === "vendas" && !isPersonal && (role === "admin" || role === "financial") && (
           <>
-            {/* FILTRO POR VENDEDOR */}
             <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:24 }}>
               <select value={filterSeller} onChange={e=>setFilterSeller(e.target.value)} style={{ ...inputSt, flex: isMobile?"1":"auto" }}>
                 <option value="all">👥 Todos os vendedores</option>
@@ -399,13 +407,12 @@ export default function Analytics() {
               )}
             </div>
 
-            {/* CARDS VENDAS */}
             <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"repeat(4,1fr)", gap:14, marginBottom:28 }}>
               {[
-                { label:"Total Vendido",    value:fmt(totalVendido),    color:"#22c55e", border:"#22c55e" },
-                { label:"Total Vendas",     value:totalVendas,           color:theme.primary, border:theme.primary },
-                { label:"Concluídas",       value:vendasConcluidas,      color:"#22c55e", border:"#22c55e" },
-                { label:"Em aberto",        value:vendasAbertas,         color:"#f59e0b", border:"#f59e0b" },
+                { label:"Total Vendido", value:fmt(totalVendido),    color:"#22c55e", border:"#22c55e" },
+                { label:"Total Vendas",  value:totalVendas,           color:theme.primary, border:theme.primary },
+                { label:"Concluídas",    value:vendasConcluidas,      color:"#22c55e", border:"#22c55e" },
+                { label:"Em aberto",     value:vendasAbertas,         color:"#f59e0b", border:"#f59e0b" },
               ].map((c,i)=>(
                 <div key={i} className="card3d-a" style={{ borderLeft:`3px solid ${c.border}` }}>
                   <span style={{ fontSize:10, color:theme.textMuted, textTransform:"uppercase", letterSpacing:"0.5px" }}>{c.label}</span>
@@ -414,16 +421,13 @@ export default function Analytics() {
               ))}
             </div>
 
-            {/* RANKING DE VENDEDORES — só quando "todos" */}
             {filterSeller === "all" && sellerRanking.length > 0 && (
               <div className="chart3d-a">
                 <h3 style={{ fontSize:14, fontWeight:600, margin:"0 0 16px 0", color:theme.textSecondary }}>🏆 Ranking de Vendedores</h3>
                 <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                   {sellerRanking.map((s,i)=>(
                     <div key={i} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 16px", background: isGlass?"rgba(255,255,255,0.1)":theme.bgCard, borderRadius:10, border:`1px solid ${theme.borderCard}` }}>
-                      <div style={{ fontSize:"1.3rem", minWidth:32, textAlign:"center" }}>
-                        {i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}º`}
-                      </div>
+                      <div style={{ fontSize:"1.3rem", minWidth:32, textAlign:"center" }}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}º`}</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:600, color:theme.textPrimary, fontSize:"0.95rem" }}>{s.name}</div>
                         <div style={{ color:theme.textMuted, fontSize:"0.78rem" }}>{s.count} vendas · {s.done} concluídas · {s.open} em aberto</div>
@@ -435,11 +439,10 @@ export default function Analytics() {
               </div>
             )}
 
-            {/* VENDAS POR MÊS */}
             <div className="chart3d-a">
               <h3 style={{ fontSize:14, fontWeight:600, margin:"0 0 4px 0", color:theme.textSecondary }}>📊 Vendas por Mês</h3>
               <p style={{ fontSize:12, color:theme.textMuted, margin:"0 0 16px" }}>
-                {filterSeller==="all" ? "Toda a equipe" : `Vendedor: ${teamUsers.find(u=>String(u.id)===String(filterSeller))?.name || ""}`}
+                {filterSeller==="all" ? "Toda a equipe" : `Vendedor: ${teamUsers.find(u=>String(u.id)===String(filterSeller))?.name||""}`}
               </p>
               <ResponsiveContainer width="100%" height={chartH}>
                 <BarChart data={orderMonthlyData}>
@@ -454,12 +457,11 @@ export default function Analytics() {
               </ResponsiveContainer>
             </div>
 
-            {/* PRODUTOS MAIS VENDIDOS */}
             {topProducts.length > 0 && (
               <div className="chart3d-a">
                 <h3 style={{ fontSize:14, fontWeight:600, margin:"0 0 4px 0", color:theme.textSecondary }}>📦 Produtos/Serviços Mais Vendidos</h3>
                 <p style={{ fontSize:12, color:theme.textMuted, margin:"0 0 16px" }}>
-                  {filterSeller==="all" ? "Toda a equipe" : `Vendedor: ${teamUsers.find(u=>String(u.id)===String(filterSeller))?.name || ""}`}
+                  {filterSeller==="all" ? "Toda a equipe" : `Vendedor: ${teamUsers.find(u=>String(u.id)===String(filterSeller))?.name||""}`}
                 </p>
                 <ResponsiveContainer width="100%" height={isMobile?220:300}>
                   <BarChart data={topProducts} layout="vertical">
