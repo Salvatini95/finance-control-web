@@ -21,7 +21,8 @@ function useIsMobile() {
   return isMobile;
 }
 
-const EMPTY_FORM     = { name:"", description:"", type:"service", unit:"un", cost:"", price:"", category:"", active:true, stock_min:0, stock_qty_initial:0 };
+// ✅ SKU adicionado no EMPTY_FORM
+const EMPTY_FORM     = { name:"", sku:"", description:"", type:"service", unit:"un", cost:"", price:"", category:"", active:true, stock_min:0, stock_qty_initial:0 };
 const EMPTY_MOVEMENT = { type:"in", qty:"", cost:"", reason:"", date:"" };
 const EMPTY_SERVICE  = { client_id:"", duration_min:"", amount:"", notes:"", date:"" };
 
@@ -32,7 +33,6 @@ export default function Products() {
   const isMobile    = useIsMobile();
   const navigate    = useNavigate();
 
-  // ✅ controle de role
   const role       = localStorage.getItem("role") || "viewer";
   const isSeller   = role === "seller";
   const canEdit    = role === "admin" || role === "financial" || role === "stock";
@@ -109,17 +109,31 @@ export default function Products() {
     if (!canEdit) return;
     setEditing(null); setForm(EMPTY_FORM); setModalOpen(true);
   }
+
   function openEdit(p) {
     if (!canEdit) return;
     setEditing(p);
-    setForm({ name:p.name, description:p.description||"", type:p.type, unit:p.unit||"un", cost:p.cost, price:p.price, category:p.category||"", active:p.active, stock_min:p.stock_min||0, stock_qty_initial:0 });
+    // ✅ SKU incluído no openEdit
+    setForm({
+      name:p.name, sku:p.sku||"", description:p.description||"", type:p.type,
+      unit:p.unit||"un", cost:p.cost, price:p.price,
+      category:p.category||"", active:p.active,
+      stock_min:p.stock_min||0, stock_qty_initial:0,
+    });
     setModalOpen(true);
   }
   function closeModal() { setModalOpen(false); setEditing(null); }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const payload = { ...form, cost:parseFloat(form.cost)||0, price:parseFloat(form.price), stock_min:parseFloat(form.stock_min||0), stock_qty_initial: editing?undefined:parseFloat(form.stock_qty_initial||0) };
+    const payload = {
+      ...form,
+      cost:              parseFloat(form.cost)||0,
+      price:             parseFloat(form.price),
+      stock_min:         parseFloat(form.stock_min||0),
+      stock_qty_initial: editing ? undefined : parseFloat(form.stock_qty_initial||0),
+      sku:               form.sku.trim() || null,
+    };
     const url    = editing ? `${API}/products/${editing.id}` : `${API}/products`;
     const method = editing ? "PUT" : "POST";
     try {
@@ -178,7 +192,10 @@ export default function Products() {
 
   const filtered = products.filter(p => {
     const typeOk   = filterType==="all" || p.type===filterType;
-    const searchOk = p.name.toLowerCase().includes(search.toLowerCase()) || (p.category||"").toLowerCase().includes(search.toLowerCase());
+    // ✅ busca também por SKU
+    const searchOk = p.name.toLowerCase().includes(search.toLowerCase())
+      || (p.category||"").toLowerCase().includes(search.toLowerCase())
+      || (p.sku||"").toLowerCase().includes(search.toLowerCase());
     return typeOk && searchOk;
   });
 
@@ -187,7 +204,7 @@ export default function Products() {
   const avgMargin     = products.length ? (products.reduce((s,p)=>s+p.margin,0)/products.length).toFixed(1) : 0;
   const stockAlerts   = products.filter(p=>p.type==="product"&&p.stock_qty<=p.stock_min).length;
 
-  const inputStyle = { background:theme.bgInput, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderInput}`, borderRadius:10, padding:"10px 14px", color:theme.textPrimary, fontSize:"0.9rem", outline:"none", width:"100%", boxSizing:"border-box", transition:"border-color 0.2s", colorScheme, ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
+  const inputStyle   = { background:theme.bgInput, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderInput}`, borderRadius:10, padding:"10px 14px", color:theme.textPrimary, fontSize:"0.9rem", outline:"none", width:"100%", boxSizing:"border-box", transition:"border-color 0.2s", colorScheme, ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
   const selectStyle  = { ...inputStyle, cursor:"pointer" };
   const modalBg      = isGlass ? { backdropFilter:"blur(18px) saturate(180%)", WebkitBackdropFilter:"blur(18px) saturate(180%)", background:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.6)" } : { background:theme.bgModal, border:`1px solid ${theme.borderCard}` };
   const btnPrimary   = { background:theme.primaryGrad, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem", boxShadow:`0 4px 15px ${theme.primary}33` };
@@ -196,12 +213,12 @@ export default function Products() {
   const fieldStyle   = { display:"flex", flexDirection:"column", gap:6 };
   const tabStyle     = (active) => ({ padding:"8px 18px", borderRadius:8, fontSize:"0.85rem", fontWeight:600, cursor:"pointer", border:"none", transition:"all 0.2s", background:active?theme.primaryGrad:(isGlass?"rgba(255,255,255,0.2)":theme.bgCard), color:active?"#fff":theme.textMuted, boxShadow:active?`0 4px 12px ${theme.primary}33`:"none" });
 
-  // colunas da tabela conforme role
+  // ✅ cabeçalhos com SKU para canEdit no desktop
   const tableHeaders = isMobile
     ? ["Nome","Tipo","Preço","Estq.","Ações"]
     : canEdit
-      ? ["Nome","Tipo","Unid.","Custo","Preço","Margem","Estq./Serv.","Status","Ações"]
-      : ["Nome","Tipo","Unid.","Preço","Estq./Serv."];
+      ? ["Nome","SKU","Tipo","Unid.","Custo","Preço","Margem","Estq./Serv.","Status","Ações"]
+      : ["Nome","SKU","Tipo","Unid.","Preço","Estq./Serv."];
 
   return (
     <PageLayout>
@@ -231,13 +248,12 @@ export default function Products() {
               </p>
             </div>
           </div>
-          {/* ✅ botão novo item só para quem pode editar */}
           {canEdit && (
             <button style={{ ...btnPrimary, whiteSpace:"nowrap" }} onClick={openCreate}>+ Novo Item</button>
           )}
         </div>
 
-        {/* CARDS — seller não vê margem */}
+        {/* CARDS */}
         <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)", gap:16, marginBottom:28 }}>
           {[
             { icon:"📦", label:"Produtos",      value:totalProducts, color:theme.primary, border:isGlass?"rgba(255,255,255,0.5)":`${theme.primary}44` },
@@ -257,7 +273,8 @@ export default function Products() {
 
         {/* FILTROS */}
         <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:20, alignItems:"center" }}>
-          <input style={{ ...inputStyle, width:isMobile?"100%":"280px" }} type="text" placeholder="🔍 Buscar por nome ou categoria..." value={search} onChange={e=>setSearch(e.target.value)} />
+          {/* ✅ busca também por SKU */}
+          <input style={{ ...inputStyle, width:isMobile?"100%":"280px" }} type="text" placeholder="🔍 Buscar por nome, SKU ou categoria..." value={search} onChange={e=>setSearch(e.target.value)} />
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             {["all","product","service"].map(f=>(
               <button key={f} style={{ background:filterType===f?`${theme.primary}33`:(isGlass?"rgba(255,255,255,0.2)":theme.bgCard), color:filterType===f?theme.textActive:theme.textMuted, border:filterType===f?`1px solid ${theme.primary}66`:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:8, padding:"6px 14px", fontSize:"0.82rem", cursor:"pointer", ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) }} onClick={()=>setFilterType(f)}>
@@ -299,16 +316,26 @@ export default function Products() {
                           <div style={{ fontWeight:600, color:theme.textPrimary }}>{p.name}</div>
                           {!isMobile&&p.category&&<div style={{ fontSize:"0.75rem", color:theme.textMuted }}>{p.category}</div>}
                         </td>
+                        {/* ✅ coluna SKU na tabela */}
+                        {!isMobile && (
+                          <td style={{ padding:"12px 16px", verticalAlign:"middle" }}>
+                            {p.sku ? (
+                              <span style={{ background:isGlass?"rgba(255,255,255,0.3)":`${theme.primary}11`, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":`${theme.primary}22`}`, borderRadius:6, padding:"2px 8px", fontSize:"0.75rem", fontWeight:600, color:theme.primary, fontFamily:"monospace" }}>
+                                {p.sku}
+                              </span>
+                            ) : (
+                              <span style={{ color:theme.textMuted, fontSize:"0.78rem" }}>—</span>
+                            )}
+                          </td>
+                        )}
                         <td style={{ padding:"12px 16px", verticalAlign:"middle" }}>
                           <span style={{ display:"inline-block", padding:"3px 8px", borderRadius:20, fontSize:"0.72rem", fontWeight:600, background:p.type==="product"?`${theme.primary}22`:`${theme.purple}22`, color:p.type==="product"?theme.primary:theme.purple }}>
                             {p.type==="product"?"📦":"⚙️"}{!isMobile&&(p.type==="product"?" Produto":" Serviço")}
                           </span>
                         </td>
                         {!isMobile&&<td style={{ padding:"12px 16px", verticalAlign:"middle", color:theme.textSecondary }}>{p.unit}</td>}
-                        {/* ✅ custo só para quem pode editar */}
                         {!isMobile&&canEdit&&<td style={{ padding:"12px 16px", verticalAlign:"middle", color:theme.textPrimary }}>{fmt(p.cost)}</td>}
                         <td style={{ padding:"12px 16px", verticalAlign:"middle", fontWeight:600, color:theme.textPrimary }}>{fmt(p.price)}</td>
-                        {/* ✅ margem só para quem pode editar */}
                         {!isMobile&&canEdit&&(
                           <td style={{ padding:"12px 16px", verticalAlign:"middle" }}>
                             <span style={{ display:"inline-block", padding:"3px 8px", borderRadius:20, fontSize:"0.72rem", fontWeight:600, background:p.margin>=30?`${theme.income}22`:`${theme.warning}22`, color:p.margin>=30?theme.income:theme.warning }}>{p.margin}%</span>
@@ -327,7 +354,6 @@ export default function Products() {
                             )}
                           </td>
                         )}
-                        {/* ✅ status e ações só para quem pode editar */}
                         {!isMobile&&canEdit&&(
                           <td style={{ padding:"12px 16px", verticalAlign:"middle" }}>
                             <button style={{ display:"inline-block", padding:"3px 10px", borderRadius:20, fontSize:"0.75rem", fontWeight:600, cursor:"pointer", border:`1px solid ${p.active?theme.income:theme.textMuted}44`, background:p.active?`${theme.income}22`:"rgba(100,116,139,0.12)", color:p.active?theme.income:theme.textMuted }} onClick={e=>{ e.stopPropagation(); handleToggle(p); }}>
@@ -358,6 +384,14 @@ export default function Products() {
                 <div>
                   <div style={{ fontWeight:700, fontSize:"1rem", color:theme.textPrimary, marginBottom:2 }}>{detailProduct.name}</div>
                   <div style={{ fontSize:"0.75rem", color:theme.textMuted }}>{detailProduct.type==="product"?"📦 Produto":"⚙️ Serviço"} · {detailProduct.category||"Sem categoria"}</div>
+                  {/* ✅ SKU no painel de detalhe */}
+                  {detailProduct.sku && (
+                    <div style={{ marginTop:4 }}>
+                      <span style={{ background:isGlass?"rgba(255,255,255,0.3)":`${theme.primary}11`, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":`${theme.primary}22`}`, borderRadius:6, padding:"2px 8px", fontSize:"0.72rem", fontWeight:600, color:theme.primary, fontFamily:"monospace" }}>
+                        SKU: {detailProduct.sku}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <button style={{ background:isGlass?"rgba(255,255,255,0.3)":theme.bgCard, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:8, color:theme.textMuted, padding:"4px 10px", cursor:"pointer", fontSize:13 }} onClick={closeDetail}>✕</button>
               </div>
@@ -368,15 +402,14 @@ export default function Products() {
                 {detailProduct.type==="service"&&canEdit&&<button style={tabStyle(activeTab==="services")} onClick={()=>setActiveTab("services")}>⚙️ Serviços</button>}
               </div>
 
-              {/* ✅ INFO — seller não vê custo, margem, lucro */}
               {activeTab==="info" && (
                 <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
                   {[
                     { label:"Preço de Venda", value:fmt(detailProduct.price), color:theme.income },
                     ...(!isSeller ? [
-                      { label:"Custo",   value:fmt(detailProduct.cost), color:theme.expense },
-                      { label:"Lucro",   value:fmt(detailProduct.profit||detailProduct.price-detailProduct.cost), color:theme.primary },
-                      { label:"Margem",  value:`${detailProduct.margin}%`, color:theme.warning },
+                      { label:"Custo",  value:fmt(detailProduct.cost), color:theme.expense },
+                      { label:"Lucro",  value:fmt(detailProduct.profit||detailProduct.price-detailProduct.cost), color:theme.primary },
+                      { label:"Margem", value:`${detailProduct.margin}%`, color:theme.warning },
                     ] : []),
                     ...(detailProduct.type==="product" ? [
                       { label:"Estoque Atual",  value:`${detailProduct.stock_qty} ${detailProduct.unit}`, color:detailProduct.stock_qty<=detailProduct.stock_min?"#ef4444":theme.income },
@@ -400,7 +433,6 @@ export default function Products() {
                 </div>
               )}
 
-              {/* ESTOQUE — seller vê mas não pode movimentar */}
               {activeTab==="stock" && (
                 <div>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
@@ -408,7 +440,6 @@ export default function Products() {
                       <span style={{ fontSize:"1.3rem", fontWeight:700, color:detailProduct.stock_qty<=detailProduct.stock_min?"#ef4444":theme.income }}>{detailProduct.stock_qty}</span>
                       <span style={{ fontSize:"0.85rem", color:theme.textMuted, marginLeft:4 }}>{detailProduct.unit} em estoque</span>
                     </div>
-                    {/* ✅ botão movimentar só para quem pode editar */}
                     {canEdit&&(
                       <button style={{ ...btnPrimary, fontSize:"0.82rem", padding:"7px 14px" }} onClick={()=>{ setMovForm(EMPTY_MOVEMENT); setMovModal(true); }}>+ Movimentar</button>
                     )}
@@ -434,7 +465,6 @@ export default function Products() {
                             {m.reason&&<div style={{ fontSize:"0.75rem", color:theme.textMuted, marginTop:2 }}>{m.reason}</div>}
                           </div>
                           <div style={{ textAlign:"right" }}>
-                            {/* ✅ custo só para quem pode editar */}
                             {canEdit&&m.cost&&<div style={{ fontSize:"0.8rem", color:theme.textMuted }}>{fmt(m.cost)}/un</div>}
                             <div style={{ fontSize:"0.75rem", color:theme.textMuted }}>{m.date?m.date.split("-").reverse().join("/"):"—"}</div>
                           </div>
@@ -480,7 +510,7 @@ export default function Products() {
         </div>
       </div>
 
-      {/* MODAL CRIAR/EDITAR — só para canEdit */}
+      {/* MODAL CRIAR/EDITAR */}
       {modalOpen&&canEdit&&(
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={closeModal}>
           <div style={{ ...modalBg, borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:620, maxHeight:"90vh", overflowY:"auto", boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
@@ -490,10 +520,19 @@ export default function Products() {
             </div>
             <form onSubmit={handleSubmit}>
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16, marginBottom:24 }}>
+
                 <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
                   <label style={labelStyle}>Nome *</label>
                   <input style={inputStyle} required placeholder="Nome do produto ou serviço" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} />
                 </div>
+
+                {/* ✅ CAMPO SKU */}
+                <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
+                  <label style={labelStyle}>Código / SKU</label>
+                  <input style={inputStyle} placeholder="Ex: PROD-001, SRV-042, ELE-103..." value={form.sku} onChange={e=>setForm({...form,sku:e.target.value})} />
+                  <span style={{ fontSize:"0.72rem", color:theme.textMuted, paddingLeft:4 }}>Código de referência interno (opcional)</span>
+                </div>
+
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Tipo *</label>
                   <select style={selectStyle} value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
@@ -501,20 +540,24 @@ export default function Products() {
                     <option value="product">📦 Produto</option>
                   </select>
                 </div>
+
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Unidade</label>
                   <select style={selectStyle} value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})}>
                     {["un","hr","kg","g","m","m²","m³","L","cx","pc","par","vb"].map(u=><option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Custo (R$)</label>
                   <input style={inputStyle} type="number" step="0.01" min="0" placeholder="0,00" value={form.cost} onChange={e=>setForm({...form,cost:e.target.value})} />
                 </div>
+
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Preço de Venda (R$) *</label>
                   <input style={inputStyle} type="number" step="0.01" min="0" required placeholder="0,00" value={form.price} onChange={e=>setForm({...form,price:e.target.value})} />
                 </div>
+
                 {form.type==="product"&&(
                   <>
                     <div style={fieldStyle}>
@@ -530,6 +573,7 @@ export default function Products() {
                     )}
                   </>
                 )}
+
                 {form.price>0&&(
                   <div style={{ gridColumn:"1 / -1" }}>
                     <div style={{ background:isGlass?"rgba(255,255,255,0.2)":`${theme.primary}11`, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":`${theme.primary}22`}`, borderRadius:10, padding:"10px 16px", display:"flex", gap:24, fontSize:"0.88rem", color:theme.textSecondary, flexWrap:"wrap" }}>
@@ -538,10 +582,12 @@ export default function Products() {
                     </div>
                   </div>
                 )}
+
                 <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
                   <label style={labelStyle}>Categoria</label>
                   <input style={inputStyle} placeholder="Ex: Mão de obra, Elétrica, TI..." value={form.category} onChange={e=>setForm({...form,category:e.target.value})} />
                 </div>
+
                 <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
                   <label style={labelStyle}>Descrição</label>
                   <textarea style={{ ...inputStyle, resize:"vertical", minHeight:70 }} placeholder="Detalhes..." value={form.description} onChange={e=>setForm({...form,description:e.target.value})} />
@@ -556,7 +602,7 @@ export default function Products() {
         </div>
       )}
 
-      {/* MODAL MOVIMENTAÇÃO — só para canEdit */}
+      {/* MODAL MOVIMENTAÇÃO */}
       {movModal&&canEdit&&(
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={()=>setMovModal(false)}>
           <div style={{ ...modalBg, borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:480, boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
@@ -602,10 +648,10 @@ export default function Products() {
         </div>
       )}
 
-      {/* MODAL SERVIÇO — só para canEdit */}
+      {/* MODAL SERVIÇO */}
       {svcModal&&canEdit&&(
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={()=>setSvcModal(false)}>
-          <div style={{ ...modalBg, borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:480, boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25tea 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
+          <div style={{ ...modalBg, borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:480, boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
               <h2 style={{ margin:0, fontSize:"1.1rem", fontWeight:700, color:theme.textPrimary }}>⚙️ Registrar Serviço</h2>
               <button style={{ background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:32, height:32, borderRadius:8, cursor:"pointer", fontSize:14 }} onClick={()=>setSvcModal(false)}>✕</button>
@@ -645,7 +691,7 @@ export default function Products() {
         </div>
       )}
 
-      {/* MODAL DELETE — só para canEdit */}
+      {/* MODAL DELETE */}
       {deleteConfirm&&canEdit&&(
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={()=>setDeleteConfirm(null)}>
           <div style={{ ...modalBg, border:"1px solid rgba(239,68,68,0.3)", borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:400, boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
