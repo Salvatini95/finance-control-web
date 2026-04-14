@@ -31,7 +31,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-// ✅ categorias por tipo de conta e perfil
 const PERSONAL_CATS = {
   payable:    ["🏠 Moradia","💡 Energia","💧 Água","📱 Telefone/Internet","🍔 Alimentação","🚗 Transporte","💊 Saúde","🎬 Lazer","👗 Vestuário","📚 Educação","🐾 Pet","💳 Cartão de Crédito","✈️ Viagem","🎁 Presentes","Outros"],
   receivable: ["💼 Salário","🔄 Freelance","💹 Investimentos","🏠 Aluguel Recebido","💰 Reembolso","🎁 Presente","Outros"],
@@ -40,6 +39,22 @@ const BUSINESS_CATS = {
   payable:    ["Fornecedores","Aluguel","Salários","Marketing","Equipamentos","Serviços","Impostos","Logística","Outros"],
   receivable: ["Vendas","Serviços Prestados","Consultoria","Comissões","Outros"],
 };
+
+// ✅ helpers de data para recorrência
+function addMonths(dateStr, n) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1 + n, d);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+function addWeeks(dateStr, n) {
+  const dt = new Date(dateStr + "T00:00:00");
+  dt.setDate(dt.getDate() + n * 7);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+function addYears(dateStr, n) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return `${y + n}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+}
 
 export default function Bills() {
   const { theme, themeId } = useTheme();
@@ -51,21 +66,27 @@ export default function Bills() {
   const isPersonal  = accountType === "personal";
   const CATS        = isPersonal ? PERSONAL_CATS : BUSINESS_CATS;
 
-  const [sidebarOpen, setSidebarOpen]   = useState(false);
-  const [bills, setBills]               = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [filter, setFilter]             = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [searchText, setSearchText]     = useState("");
-  const [modalOpen, setModalOpen]       = useState(false);
-  const [editingBill, setEditingBill]   = useState(null);
+  const [sidebarOpen, setSidebarOpen]     = useState(false);
+  const [bills, setBills]                 = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [filter, setFilter]               = useState("all");
+  const [statusFilter, setStatusFilter]   = useState("all");
+  const [searchText, setSearchText]       = useState("");
+  const [modalOpen, setModalOpen]         = useState(false);
+  const [editingBill, setEditingBill]     = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [toast, setToast]               = useState(null);
+  const [toast, setToast]                 = useState(null);
   const [form, setForm] = useState({
     description:"", amount:"", type:"payable",
     status:"pending", due_date:"", paid_date:"",
     category:"", notes:"",
   });
+
+  // ✅ estados de recorrência
+  const [recurring, setRecurring]             = useState(false);
+  const [recurringFreq, setRecurringFreq]     = useState("monthly");
+  const [recurringQty, setRecurringQty]       = useState(3);
+  const [savingRecurring, setSavingRecurring] = useState(false);
 
   async function fetchBills() {
     setLoading(true);
@@ -87,12 +108,14 @@ export default function Bills() {
 
   function openCreate() {
     setEditingBill(null);
+    setRecurring(false); setRecurringQty(3); setRecurringFreq("monthly");
     setForm({ description:"", amount:"", type:"payable", status:"pending", due_date:"", paid_date:"", category:"", notes:"" });
     setModalOpen(true);
   }
 
   function openEdit(bill) {
     setEditingBill(bill);
+    setRecurring(false);
     setForm({
       description: bill.description||"", amount: bill.amount||"",
       type: bill.type||"payable", status: bill.status||"pending",
@@ -102,22 +125,71 @@ export default function Bills() {
     setModalOpen(true);
   }
 
-  function closeModal() { setModalOpen(false); setEditingBill(null); }
+  function closeModal() { setModalOpen(false); setEditingBill(null); setRecurring(false); }
 
+  // ✅ submit com suporte a recorrência
   async function handleSubmit(e) {
     e.preventDefault();
-    const payload = { ...form, amount: parseFloat(form.amount) };
-    const url    = editingBill ? `${API}/bills/${editingBill.id}` : `${API}/bills`;
-    const method = editingBill ? "PUT" : "POST";
+    if (!form.description || !form.amount || !form.due_date) {
+      showToast("Preencha todos os campos obrigatórios.", "error"); return;
+    }
+
+    setSavingRecurring(true);
     try {
-      const res = await fetch(url, {
-        method,
-        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) { showToast(editingBill?"Conta atualizada!":"Conta criada!"); closeModal(); fetchBills(); }
-      else { const err = await res.json(); showToast(err.msg||"Erro ao salvar.","error"); }
+      if (editingBill) {
+        // edição simples — sem recorrência
+        const res = await fetch(`${API}/bills/${editingBill.id}`, {
+          method: "PUT",
+          headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
+          body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
+        });
+        if (res.ok) { showToast("Conta atualizada!"); closeModal(); fetchBills(); }
+        else { const err = await res.json(); showToast(err.msg||"Erro ao salvar.","error"); }
+
+      } else if (!recurring) {
+        // nova conta simples
+        const res = await fetch(`${API}/bills`, {
+          method: "POST",
+          headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
+          body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
+        });
+        if (res.ok) { showToast("Conta criada!"); closeModal(); fetchBills(); }
+        else { const err = await res.json(); showToast(err.msg||"Erro ao salvar.","error"); }
+
+      } else {
+        // ✅ recorrente: cria N contas com datas incrementadas
+        const qty   = parseInt(recurringQty) || 2;
+        const dates = [form.due_date];
+        for (let i = 1; i < qty; i++) {
+          if (recurringFreq === "monthly") dates.push(addMonths(form.due_date, i));
+          if (recurringFreq === "weekly")  dates.push(addWeeks(form.due_date, i));
+          if (recurringFreq === "yearly")  dates.push(addYears(form.due_date, i));
+        }
+        const freqLabel = { monthly:"Mensal", weekly:"Semanal", yearly:"Anual" }[recurringFreq];
+
+        const results = await Promise.all(
+          dates.map((dt, i) =>
+            fetch(`${API}/bills`, {
+              method: "POST",
+              headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
+              body: JSON.stringify({
+                ...form,
+                amount: parseFloat(form.amount),
+                description: `${form.description} (${freqLabel} ${i+1}/${qty})`,
+                due_date: dt,
+                status: "pending",
+              }),
+            })
+          )
+        );
+
+        if (results.every(r => r.ok)) {
+          showToast(`✅ ${qty} contas recorrentes criadas!`);
+          closeModal(); fetchBills();
+        } else { showToast("Erro ao criar algumas contas.", "error"); }
+      }
     } catch { showToast("Erro de conexão.","error"); }
+    finally { setSavingRecurring(false); }
   }
 
   async function handlePay(bill) {
@@ -140,19 +212,12 @@ export default function Bills() {
     } catch { showToast("Erro de conexão.","error"); }
   }
 
-  // ✅ duplicar conta
   async function handleDuplicate(bill) {
-    const payload = {
-      description: `${bill.description} (cópia)`,
-      amount: bill.amount, type: bill.type,
-      status: "pending", due_date: bill.due_date,
-      category: bill.category, notes: bill.notes,
-    };
     try {
       const res = await fetch(`${API}/bills`, {
         method:"POST",
         headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ description:`${bill.description} (cópia)`, amount:bill.amount, type:bill.type, status:"pending", due_date:bill.due_date, category:bill.category, notes:bill.notes }),
       });
       if (res.ok) { showToast("Conta duplicada!"); fetchBills(); }
       else showToast("Erro ao duplicar.","error");
@@ -173,7 +238,6 @@ export default function Bills() {
   const totalReceived   = bills.filter(b=>b.type==="receivable"&&b.status==="paid").reduce((s,b)=>s+b.amount,0);
   const totalOverdue    = bills.filter(b=>isOverdue(b.due_date,b.status)).reduce((s,b)=>s+b.amount,0);
 
-  // ✅ próximas a vencer (7 dias) — destaque para PF
   const today   = new Date(); today.setHours(0,0,0,0);
   const in7days = new Date(today); in7days.setDate(today.getDate() + 7);
   const upcoming = bills.filter(b => {
@@ -195,7 +259,6 @@ export default function Bills() {
     ...(isGlass && { backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)" }),
   });
 
-  // categorias disponíveis para o tipo atual no form
   const formCats = CATS[form.type] || [];
 
   return (
@@ -229,7 +292,7 @@ export default function Bills() {
           </button>
         </div>
 
-        {/* ✅ ALERTA VENCIMENTO PRÓXIMO — destaque para PF */}
+        {/* ALERTA VENCIMENTO PRÓXIMO */}
         {upcoming.length > 0 && (
           <div style={{ background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.3)", borderRadius:14, padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -284,10 +347,8 @@ export default function Bills() {
 
         {/* FILTROS */}
         <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:16, alignItems:"center" }}>
-          {/* busca */}
           <input type="text" placeholder="🔍 Buscar..." value={searchText} onChange={e=>setSearchText(e.target.value)}
             style={{ background:theme.bgInput, color:theme.textPrimary, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderInput}`, padding:"8px 14px", borderRadius:8, fontSize:13, outline:"none", width:isMobile?"100%":"180px", colorScheme, ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) }} />
-
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span style={{ color:theme.textMuted, fontSize:"0.82rem", fontWeight:600 }}>Tipo:</span>
             {["all","payable","receivable"].map(f => (
@@ -296,7 +357,6 @@ export default function Bills() {
               </button>
             ))}
           </div>
-
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span style={{ color:theme.textMuted, fontSize:"0.82rem", fontWeight:600 }}>Status:</span>
             {["all","pending","paid","overdue"].map(s => (
@@ -305,7 +365,6 @@ export default function Bills() {
               </button>
             ))}
           </div>
-
           {(searchText||filter!=="all"||statusFilter!=="all") && (
             <button onClick={() => { setSearchText(""); setFilter("all"); setStatusFilter("all"); }}
               style={{ background:"rgba(239,68,68,0.15)", color:"#ef4444", border:"1px solid rgba(239,68,68,0.3)", padding:"6px 14px", borderRadius:8, cursor:"pointer", fontSize:13 }}>
@@ -342,7 +401,6 @@ export default function Bills() {
                         <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
                           <span style={{ fontWeight:500, color:theme.textPrimary }}>{bill.description}</span>
                           {bill.notes && <span style={{ fontSize:"0.75rem", color:theme.textMuted }}>{bill.notes}</span>}
-                          {/* ✅ badge "vence em X dias" para PF */}
                           {isPersonal && bill.status!=="paid" && !overdue && daysLeft <= 7 && daysLeft >= 0 && (
                             <span style={{ fontSize:"0.7rem", color:"#f59e0b", fontWeight:600 }}>
                               ⏰ {daysLeft===0?"Vence hoje":`Vence em ${daysLeft} dia${daysLeft>1?"s":""}`}
@@ -367,7 +425,6 @@ export default function Bills() {
                             <button style={{ background:`${theme.income}22`, border:`1px solid ${theme.income}44`, borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={() => handlePay(bill)} title="Marcar como pago">✅</button>
                           )}
                           <button style={{ background:isGlass?"rgba(255,255,255,0.25)":theme.bgCardHover, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={() => openEdit(bill)} title="Editar">✏️</button>
-                          {/* ✅ botão duplicar */}
                           <button style={{ background:isGlass?"rgba(255,255,255,0.25)":`${theme.accent}22`, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":`${theme.accent}44`}`, borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={() => handleDuplicate(bill)} title="Duplicar">📋</button>
                           <button style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={() => setDeleteConfirm(bill)} title="Excluir">🗑️</button>
                         </div>
@@ -384,13 +441,14 @@ export default function Bills() {
       {/* MODAL CRIAR/EDITAR */}
       {modalOpen && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={closeModal}>
-          <div style={{ ...modalBg, borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:620, maxHeight:"90vh", overflowY:"auto", boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
+          <div style={{ ...modalBg, borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:640, maxHeight:"90vh", overflowY:"auto", boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
+
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
               <h2 style={{ margin:0, fontSize:"1.2rem", fontWeight:700, color:theme.textPrimary }}>{editingBill?"✏️ Editar Conta":"➕ Nova Conta"}</h2>
               <button style={{ background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:32, height:32, borderRadius:8, cursor:"pointer", fontSize:14 }} onClick={closeModal}>✕</button>
             </div>
 
-            {/* ✅ seletor visual de tipo para PF */}
+            {/* seletor visual tipo PF */}
             {isPersonal && (
               <div style={{ display:"flex", gap:10, marginBottom:20 }}>
                 {[{ v:"payable", label:"💸 A Pagar", color:"#ef4444" }, { v:"receivable", label:"💚 A Receber", color:theme.income }].map(opt => (
@@ -403,7 +461,7 @@ export default function Bills() {
             )}
 
             <form onSubmit={handleSubmit}>
-              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16, marginBottom:20 }}>
 
                 <div style={{ display:"flex", flexDirection:"column", gap:6, gridColumn:"1 / -1" }}>
                   <label style={lbl}>Descrição *</label>
@@ -415,7 +473,6 @@ export default function Bills() {
                   <input style={inp(theme, isGlass)} type="number" step="0.01" min="0" required placeholder="0,00" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} />
                 </div>
 
-                {/* tipo só para business */}
                 {!isPersonal && (
                   <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                     <label style={lbl}>Tipo *</label>
@@ -444,7 +501,6 @@ export default function Bills() {
                   <input style={inp(theme, isGlass)} type="date" value={form.paid_date} onChange={e=>setForm({...form,paid_date:e.target.value})} />
                 </div>
 
-                {/* ✅ categoria como select */}
                 <div style={{ display:"flex", flexDirection:"column", gap:6, gridColumn:"1 / -1" }}>
                   <label style={lbl}>Categoria</label>
                   <select style={sel(theme, isGlass)} value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>
@@ -459,10 +515,74 @@ export default function Bills() {
                 </div>
               </div>
 
+              {/* ✅ BLOCO RECORRÊNCIA — só para criação */}
+              {!editingBill && (
+                <div style={{ marginBottom:20, padding:"16px 20px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgPrimary, borderRadius:12, border:`1px solid ${recurring?`${theme.primary}44`:isGlass?"rgba(255,255,255,0.3)":theme.border}`, transition:"border-color 0.2s" }}>
+
+                  {/* toggle */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }} onClick={() => setRecurring(!recurring)}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:"1.1rem" }}>🔁</span>
+                      <div>
+                        <div style={{ fontWeight:600, fontSize:14, color:recurring?theme.primary:theme.textPrimary }}>Conta Recorrente</div>
+                        <div style={{ fontSize:12, color:theme.textMuted }}>Aluguel, energia, assinaturas...</div>
+                      </div>
+                    </div>
+                    <div style={{ width:44, height:24, borderRadius:12, background:recurring?theme.primary:"rgba(100,116,139,0.3)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                      <div style={{ position:"absolute", top:3, left:recurring?22:3, width:18, height:18, borderRadius:"50%", background:"white", transition:"left 0.2s", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }} />
+                    </div>
+                  </div>
+
+                  {/* opções */}
+                  {recurring && (
+                    <div style={{ marginTop:16, display:"flex", gap:12, flexWrap:"wrap", alignItems:"flex-end" }}>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6, flex:1, minWidth:140 }}>
+                        <label style={lbl}>Frequência</label>
+                        <select value={recurringFreq} onChange={e=>setRecurringFreq(e.target.value)} style={sel(theme, isGlass)}>
+                          <option value="weekly">📅 Semanal</option>
+                          <option value="monthly">📆 Mensal</option>
+                          <option value="yearly">🗓️ Anual</option>
+                        </select>
+                      </div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6, flex:1, minWidth:140 }}>
+                        <label style={lbl}>Repetições</label>
+                        <select value={recurringQty} onChange={e=>setRecurringQty(e.target.value)} style={sel(theme, isGlass)}>
+                          {recurringFreq === "weekly"  && [2,3,4,6,8,12,16,24,52].map(n => <option key={n} value={n}>{n}x ({n} semanas)</option>)}
+                          {recurringFreq === "monthly" && [2,3,6,9,12,18,24].map(n => <option key={n} value={n}>{n}x ({n} meses)</option>)}
+                          {recurringFreq === "yearly"  && [2,3,4,5].map(n => <option key={n} value={n}>{n}x ({n} anos)</option>)}
+                        </select>
+                      </div>
+                      {/* preview datas */}
+                      {form.due_date && (
+                        <div style={{ padding:"10px 14px", background:isGlass?"rgba(255,255,255,0.2)":`${theme.primary}11`, borderRadius:10, border:`1px solid ${theme.primary}33`, fontSize:12, color:theme.textMuted, flex:1, minWidth:180 }}>
+                          <div style={{ fontWeight:600, color:theme.primary, marginBottom:6 }}>📋 Preview das datas:</div>
+                          {Array.from({ length: Math.min(parseInt(recurringQty)||2, 4) }).map((_, i) => {
+                            let dt = form.due_date;
+                            if (recurringFreq === "monthly") dt = addMonths(form.due_date, i);
+                            if (recurringFreq === "weekly")  dt = addWeeks(form.due_date, i);
+                            if (recurringFreq === "yearly")  dt = addYears(form.due_date, i);
+                            const [y,m,d] = dt.split("-");
+                            return <div key={i} style={{ marginBottom:2 }}>• {d}/{m}/{y}</div>;
+                          })}
+                          {parseInt(recurringQty) > 4 && <div style={{ color:theme.textMuted }}>+ {parseInt(recurringQty)-4} mais...</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display:"flex", justifyContent:"flex-end", gap:12, flexDirection:isMobile?"column":"row" }}>
                 <button type="button" style={{ background:isGlass?"rgba(255,255,255,0.3)":theme.bgCard, color:theme.textSecondary, border:`1px solid ${theme.borderCard}`, borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", width:isMobile?"100%":"auto" }} onClick={closeModal}>Cancelar</button>
-                <button type="submit" style={{ background:theme.primaryGrad, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", boxShadow:`0 4px 15px ${theme.primary}44`, width:isMobile?"100%":"auto" }}>
-                  {editingBill?"Salvar Alterações":"Criar Conta"}
+                <button type="submit" disabled={savingRecurring}
+                  style={{ background:theme.primaryGrad, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:savingRecurring?"not-allowed":"pointer", opacity:savingRecurring?0.6:1, boxShadow:`0 4px 15px ${theme.primary}44`, width:isMobile?"100%":"auto" }}>
+                  {savingRecurring
+                    ? "Criando..."
+                    : editingBill
+                      ? "Salvar Alterações"
+                      : recurring
+                        ? `🔁 Criar ${recurringQty}x ${{ weekly:"Semanal", monthly:"Mensal", yearly:"Anual" }[recurringFreq]}`
+                        : "Criar Conta"}
                 </button>
               </div>
             </form>
