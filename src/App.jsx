@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./contexts/ThemeContext";
-
 import Login        from "./pages/Login";
 import Dashboard    from "./pages/Dashboard";
 import Analytics    from "./pages/Analytics";
@@ -12,7 +11,7 @@ import Settings     from "./pages/Settings";
 import Clients      from "./pages/Clients";
 import Sales        from "./pages/Sales";
 import Team         from "./pages/Team";
-
+import Goals        from "./pages/Goals";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -20,9 +19,7 @@ function App() {
     <ThemeProvider>
       <BrowserRouter>
         <Routes>
-
           <Route path="/" element={<Login />} />
-
           <Route path="/dashboard" element={
             <ProtectedRoute><Dashboard /></ProtectedRoute>
           } />
@@ -41,8 +38,9 @@ function App() {
           <Route path="/settings" element={
             <ProtectedRoute><Settings /></ProtectedRoute>
           } />
-
-          {/* Somente admin e financial */}
+          <Route path="/goals" element={
+            <ProtectedRoute><Goals /></ProtectedRoute>
+          } />
           <Route path="/transactions" element={
             <ProtectedRoute roles={["admin", "financial"]}>
               <Transactions />
@@ -58,14 +56,11 @@ function App() {
               <Analytics />
             </ProtectedRoute>
           } />
-
-          {/* Somente admin */}
           <Route path="/team" element={
             <ProtectedRoute roles={["admin"]}>
               <Team />
             </ProtectedRoute>
           } />
-
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
