@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { loginUser, registerUser, registerPersonalUser } from "../services/api"
 import logoImg from "../assets/logo.gif"
+
+const API = "https://finance-control-api-production.up.railway.app/api"
 
 // =========================
 // CANVAS — NÚMEROS FLUTUANDO
@@ -60,22 +62,42 @@ function FloatingNumbers() {
 // LOGIN PRINCIPAL
 // =========================
 export default function Login() {
-  const navigate = useNavigate()
+  const navigate          = useNavigate()
+  const [searchParams]    = useSearchParams()
 
   // "choose" | "login" | "register-business" | "register-personal"
+  // "verify-pending" | "verify-success" | "verify-error"
+  // "forgot-password" | "reset-password" | "reset-success"
   const [screen, setScreen]               = useState("choose")
   const [name, setName]                   = useState("")
   const [companyName, setCompanyName]     = useState("")
   const [email, setEmail]                 = useState("")
   const [password, setPassword]           = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [unverifiedEmail, setUnverifiedEmail] = useState("")
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState("")
   const [success, setSuccess]             = useState("")
 
+  // ✅ detecta token na URL para verificação e reset
   useEffect(() => {
-    if (localStorage.getItem("token")) navigate("/dashboard")
+    if (localStorage.getItem("token")) { navigate("/dashboard"); return }
+
+    const verifyToken = searchParams.get("token")
+    const resetToken  = searchParams.get("reset")
+
+    if (verifyToken) handleVerifyEmail(verifyToken)
+    if (resetToken)  { setScreen("reset-password"); }
   }, [])
+
+  async function handleVerifyEmail(token) {
+    setScreen("verifying")
+    try {
+      const res = await fetch(`${API}/verify-email?token=${token}`)
+      if (res.ok) setScreen("verify-success")
+      else        setScreen("verify-error")
+    } catch { setScreen("verify-error") }
+  }
 
   function resetForm() {
     setName(""); setCompanyName(""); setEmail("")
@@ -85,17 +107,25 @@ export default function Login() {
 
   function goTo(s) { resetForm(); setScreen(s) }
 
+  // ── LOGIN ──
   const handleLogin = async (e) => {
     e.preventDefault()
     setLoading(true); setError("")
     try {
       const { ok, data } = await loginUser(email, password)
-      if (ok) navigate("/dashboard")
-      else setError(data.msg || "Email ou senha inválidos")
+      if (ok) {
+        navigate("/dashboard")
+      } else if (data.email_unverified) {
+        setUnverifiedEmail(data.email || email)
+        setScreen("verify-pending")
+      } else {
+        setError(data.msg || "Email ou senha inválidos")
+      }
     } catch { setError("Erro ao conectar com o servidor") }
     finally { setLoading(false) }
   }
 
+  // ── CADASTRO PJ ──
   const handleRegisterBusiness = async (e) => {
     e.preventDefault()
     if (!name.trim())        { setError("Nome é obrigatório"); return }
@@ -106,12 +136,13 @@ export default function Login() {
     try {
       const res  = await registerUser(email, password, name, companyName)
       const data = await res.json()
-      if (res.ok) { setSuccess("Empresa criada! Faça login."); goTo("login") }
+      if (res.ok) { setUnverifiedEmail(email); setScreen("verify-pending") }
       else setError(data.msg || "Erro ao criar conta")
     } catch { setError("Erro ao conectar com o servidor") }
     finally { setLoading(false) }
   }
 
+  // ── CADASTRO PF ──
   const handleRegisterPersonal = async (e) => {
     e.preventDefault()
     if (!name.trim())  { setError("Nome é obrigatório"); return }
@@ -121,8 +152,56 @@ export default function Login() {
     try {
       const res  = await registerPersonalUser(email, password, name)
       const data = await res.json()
-      if (res.ok) { setSuccess("Conta criada! Faça login."); goTo("login") }
+      if (res.ok) { setUnverifiedEmail(email); setScreen("verify-pending") }
       else setError(data.msg || "Erro ao criar conta")
+    } catch { setError("Erro ao conectar com o servidor") }
+    finally { setLoading(false) }
+  }
+
+  // ── REENVIAR VERIFICAÇÃO ──
+  async function handleResendVerification() {
+    setLoading(true)
+    try {
+      const res = await fetch(`${API}/resend-verification`, {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ email: unverifiedEmail }),
+      })
+      const data = await res.json()
+      setSuccess(data.msg || "Email reenviado!")
+    } catch { setError("Erro ao reenviar email") }
+    finally { setLoading(false) }
+  }
+
+  // ── ESQUECEU SENHA ──
+  async function handleForgotPassword(e) {
+    e.preventDefault()
+    setLoading(true); setError(""); setSuccess("")
+    try {
+      const res  = await fetch(`${API}/forgot-password`, {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json()
+      setSuccess(data.msg)
+    } catch { setError("Erro ao conectar com o servidor") }
+    finally { setLoading(false) }
+  }
+
+  // ── REDEFINIR SENHA ──
+  async function handleResetPassword(e) {
+    e.preventDefault()
+    if (password !== confirmPassword) { setError("As senhas não coincidem"); return }
+    if (password.length < 6) { setError("Senha mínimo 6 caracteres"); return }
+    setLoading(true); setError("")
+    const resetToken = searchParams.get("reset")
+    try {
+      const res  = await fetch(`${API}/reset-password`, {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ token:resetToken, password }),
+      })
+      const data = await res.json()
+      if (res.ok) setScreen("reset-success")
+      else setError(data.msg || "Erro ao redefinir senha")
     } catch { setError("Erro ao conectar com o servidor") }
     finally { setLoading(false) }
   }
@@ -145,9 +224,7 @@ export default function Login() {
           <p style={brandSubtitle}>Gerencie suas finanças com inteligência e clareza.</p>
         </div>
 
-        {/* ══════════════════════════════
-            TELA: ESCOLHA PF vs PJ
-        ══════════════════════════════ */}
+        {/* ══ ESCOLHA PF vs PJ ══ */}
         {screen === "choose" && (
           <div style={card}>
             <Corners />
@@ -156,29 +233,21 @@ export default function Login() {
               <p style={cardSub}>Como você deseja usar o Finance Control?</p>
             </div>
             <div style={divider} />
-
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              {/* OPÇÃO PESSOAL */}
               <button onClick={() => goTo("register-personal")} style={choiceBtn("#22c55e")}>
                 <div style={{ fontSize:"2rem", marginBottom:8 }}>👤</div>
                 <div style={{ fontWeight:700, fontSize:"1.1rem", color:"#fff", marginBottom:4 }}>Uso Pessoal</div>
-                <div style={{ fontSize:"0.82rem", color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
-                  Controle financeiro pessoal — gastos, receitas, contas e análises
-                </div>
+                <div style={{ fontSize:"0.82rem", color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>Controle financeiro pessoal — gastos, receitas, contas e análises</div>
                 <div style={{ marginTop:10, display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
                   {["💸 Transações","📄 Contas","📊 Analytics"].map(t=>(
                     <span key={t} style={{ background:"rgba(34,197,94,0.2)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", color:"#86efac" }}>{t}</span>
                   ))}
                 </div>
               </button>
-
-              {/* OPÇÃO EMPRESA */}
               <button onClick={() => goTo("register-business")} style={choiceBtn("#6366f1")}>
                 <div style={{ fontSize:"2rem", marginBottom:8 }}>🏢</div>
                 <div style={{ fontWeight:700, fontSize:"1.1rem", color:"#fff", marginBottom:4 }}>Uso Empresarial</div>
-                <div style={{ fontSize:"0.82rem", color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
-                  Gestão completa — vendas, estoque, equipe, orçamentos e clientes
-                </div>
+                <div style={{ fontSize:"0.82rem", color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>Gestão completa — vendas, estoque, equipe, orçamentos e clientes</div>
                 <div style={{ marginTop:10, display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
                   {["🛒 Vendas","📦 Estoque","👥 Equipe","🧾 Orçamentos"].map(t=>(
                     <span key={t} style={{ background:"rgba(99,102,241,0.2)", border:"1px solid rgba(99,102,241,0.3)", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", color:"#a5b4fc" }}>{t}</span>
@@ -186,7 +255,6 @@ export default function Login() {
                 </div>
               </button>
             </div>
-
             <div style={toggleRow}>
               <span style={toggleText}>Já tem uma conta?</span>
               <button onClick={() => goTo("login")} style={{ ...toggleBtn, color:"#818cf8" }}>Fazer login</button>
@@ -194,9 +262,7 @@ export default function Login() {
           </div>
         )}
 
-        {/* ══════════════════════════════
-            TELA: LOGIN
-        ══════════════════════════════ */}
+        {/* ══ LOGIN ══ */}
         {screen === "login" && (
           <div style={card}>
             <Corners />
@@ -216,6 +282,12 @@ export default function Login() {
                 <label style={fieldLabel}>Senha</label>
                 <input type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} style={inputStyle} onFocus={focus} onBlur={blur} required />
               </div>
+              {/* ✅ link esqueceu senha */}
+              <div style={{ textAlign:"right", marginTop:-8 }}>
+                <button type="button" onClick={() => goTo("forgot-password")} style={{ background:"none", border:"none", color:"rgba(129,140,248,0.7)", fontSize:"12px", cursor:"pointer", padding:0 }}>
+                  Esqueceu a senha?
+                </button>
+              </div>
               <button type="submit" disabled={loading} style={{ ...submitBtn, opacity:loading?0.6:1, cursor:loading?"not-allowed":"pointer" }}>
                 <span style={{ color:"#1e1b4b", fontWeight:"700", fontSize:"15px", letterSpacing:"1px" }}>
                   {loading ? "Aguarde..." : "ENTRAR"}
@@ -229,14 +301,12 @@ export default function Login() {
           </div>
         )}
 
-        {/* ══════════════════════════════
-            TELA: CADASTRO PESSOAL (PF)
-        ══════════════════════════════ */}
+        {/* ══ CADASTRO PF ══ */}
         {screen === "register-personal" && (
           <div style={card}>
             <Corners color="#22c55e" />
             <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20 }}>
-              <button onClick={() => goTo("choose")} style={{ background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, color:"rgba(255,255,255,0.6)", padding:"6px 12px", cursor:"pointer", fontSize:13 }}>← Voltar</button>
+              <button onClick={() => goTo("choose")} style={backBtn}>← Voltar</button>
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   <span style={{ fontSize:"1.3rem" }}>👤</span>
@@ -246,8 +316,7 @@ export default function Login() {
               </div>
             </div>
             <div style={{ ...divider, background:"linear-gradient(90deg,transparent,rgba(34,197,94,0.4),transparent)" }} />
-            {error   && <div style={alertError}>⚠️ {error}</div>}
-            {success && <div style={alertSuccess}>✅ {success}</div>}
+            {error && <div style={alertError}>⚠️ {error}</div>}
             <form onSubmit={handleRegisterPersonal} style={formBody}>
               <div style={fieldGroup}>
                 <label style={fieldLabel}>Nome completo</label>
@@ -265,9 +334,8 @@ export default function Login() {
                 <label style={fieldLabel}>Confirmar senha</label>
                 <input type="password" placeholder="••••••••" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} style={inputStyle} onFocus={focus} onBlur={blur} required />
               </div>
-              {/* badge do que está incluído */}
               <div style={{ background:"rgba(34,197,94,0.06)", border:"1px solid rgba(34,197,94,0.15)", borderRadius:10, padding:"12px 16px", fontSize:"0.8rem", color:"rgba(255,255,255,0.5)" }}>
-                ✅ Inclui: Dashboard · Transações · Contas · Analytics
+                ✅ Inclui: Dashboard · Transações · Contas · Analytics · Metas
               </div>
               <button type="submit" disabled={loading} style={{ ...submitBtn, background:"linear-gradient(135deg,#22c55e,#16a34a)", opacity:loading?0.6:1, cursor:loading?"not-allowed":"pointer" }}>
                 <span style={{ color:"#fff", fontWeight:"700", fontSize:"15px", letterSpacing:"1px" }}>
@@ -282,14 +350,12 @@ export default function Login() {
           </div>
         )}
 
-        {/* ══════════════════════════════
-            TELA: CADASTRO EMPRESARIAL (PJ)
-        ══════════════════════════════ */}
+        {/* ══ CADASTRO PJ ══ */}
         {screen === "register-business" && (
           <div style={card}>
             <Corners color="#6366f1" />
             <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20 }}>
-              <button onClick={() => goTo("choose")} style={{ background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, color:"rgba(255,255,255,0.6)", padding:"6px 12px", cursor:"pointer", fontSize:13 }}>← Voltar</button>
+              <button onClick={() => goTo("choose")} style={backBtn}>← Voltar</button>
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   <span style={{ fontSize:"1.3rem" }}>🏢</span>
@@ -299,8 +365,7 @@ export default function Login() {
               </div>
             </div>
             <div style={{ ...divider, background:"linear-gradient(90deg,transparent,rgba(99,102,241,0.4),transparent)" }} />
-            {error   && <div style={alertError}>⚠️ {error}</div>}
-            {success && <div style={alertSuccess}>✅ {success}</div>}
+            {error && <div style={alertError}>⚠️ {error}</div>}
             <form onSubmit={handleRegisterBusiness} style={formBody}>
               <div style={fieldGroup}>
                 <label style={fieldLabel}>Nome completo</label>
@@ -323,7 +388,6 @@ export default function Login() {
                 <label style={fieldLabel}>Confirmar senha</label>
                 <input type="password" placeholder="••••••••" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} style={inputStyle} onFocus={focus} onBlur={blur} required />
               </div>
-              {/* badge do que está incluído */}
               <div style={{ background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.15)", borderRadius:10, padding:"12px 16px", fontSize:"0.8rem", color:"rgba(255,255,255,0.5)" }}>
                 ✅ Inclui: Vendas · Estoque · Equipe · Orçamentos · Clientes · Financeiro
               </div>
@@ -340,12 +404,172 @@ export default function Login() {
           </div>
         )}
 
+        {/* ══ AGUARDANDO VERIFICAÇÃO ══ */}
+        {screen === "verify-pending" && (
+          <div style={card}>
+            <Corners color="#f59e0b" />
+            <div style={{ textAlign:"center", padding:"10px 0" }}>
+              <div style={{ fontSize:"3.5rem", marginBottom:16 }}>📧</div>
+              <h2 style={{ ...cardTitle, marginBottom:8 }}>Verifique seu email</h2>
+              <p style={{ color:"rgba(255,255,255,0.5)", fontSize:"0.88rem", lineHeight:1.6, marginBottom:20 }}>
+                Enviamos um link de confirmação para:<br/>
+                <strong style={{ color:"#f59e0b" }}>{unverifiedEmail || "seu email"}</strong>
+              </p>
+              <div style={{ background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.2)", borderRadius:12, padding:"16px", marginBottom:24, fontSize:"0.82rem", color:"rgba(255,255,255,0.45)", lineHeight:1.7 }}>
+                📌 Clique no link do email para ativar sua conta.<br/>
+                Verifique também a pasta de <strong style={{ color:"rgba(255,255,255,0.6)" }}>spam</strong>.
+              </div>
+              {error   && <div style={{ ...alertError, marginBottom:12 }}>⚠️ {error}</div>}
+              {success && <div style={{ ...alertSuccess, marginBottom:12 }}>✅ {success}</div>}
+              <button onClick={handleResendVerification} disabled={loading}
+                style={{ width:"100%", padding:"12px", borderRadius:50, border:"1px solid rgba(245,158,11,0.3)", background:"rgba(245,158,11,0.08)", color:"#f59e0b", fontWeight:600, cursor:loading?"not-allowed":"pointer", fontSize:"0.9rem", marginBottom:12, opacity:loading?0.6:1 }}>
+                {loading ? "Reenviando..." : "📨 Reenviar email"}
+              </button>
+              <button onClick={() => goTo("login")}
+                style={{ width:"100%", padding:"12px", borderRadius:50, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"rgba(255,255,255,0.4)", fontWeight:600, cursor:"pointer", fontSize:"0.9rem" }}>
+                ← Voltar ao login
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ══ VERIFICANDO... ══ */}
+        {screen === "verifying" && (
+          <div style={card}>
+            <Corners color="#6366f1" />
+            <div style={{ textAlign:"center", padding:"20px 0" }}>
+              <div style={{ fontSize:"3rem", marginBottom:16 }}>⏳</div>
+              <h2 style={{ ...cardTitle, marginBottom:8 }}>Verificando...</h2>
+              <p style={{ color:"rgba(255,255,255,0.4)", fontSize:"0.88rem" }}>Aguarde um momento</p>
+            </div>
+          </div>
+        )}
+
+        {/* ══ VERIFICAÇÃO OK ══ */}
+        {screen === "verify-success" && (
+          <div style={card}>
+            <Corners color="#22c55e" />
+            <div style={{ textAlign:"center", padding:"10px 0" }}>
+              <div style={{ fontSize:"3.5rem", marginBottom:16 }}>🎉</div>
+              <h2 style={{ ...cardTitle, marginBottom:8, color:"#22c55e" }}>Email verificado!</h2>
+              <p style={{ color:"rgba(255,255,255,0.5)", fontSize:"0.88rem", lineHeight:1.6, marginBottom:28 }}>
+                Sua conta foi ativada com sucesso.<br/>Agora você pode fazer login.
+              </p>
+              <button onClick={() => goTo("login")}
+                style={{ ...submitBtn, background:"linear-gradient(135deg,#22c55e,#16a34a)" }}>
+                <span style={{ color:"#fff", fontWeight:"700", fontSize:"15px", letterSpacing:"1px" }}>FAZER LOGIN</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ══ VERIFICAÇÃO ERRO ══ */}
+        {screen === "verify-error" && (
+          <div style={card}>
+            <Corners color="#ef4444" />
+            <div style={{ textAlign:"center", padding:"10px 0" }}>
+              <div style={{ fontSize:"3.5rem", marginBottom:16 }}>❌</div>
+              <h2 style={{ ...cardTitle, marginBottom:8, color:"#ef4444" }}>Link inválido</h2>
+              <p style={{ color:"rgba(255,255,255,0.5)", fontSize:"0.88rem", lineHeight:1.6, marginBottom:28 }}>
+                Este link já foi usado ou expirou.<br/>Solicite um novo link de verificação.
+              </p>
+              <button onClick={() => goTo("login")}
+                style={{ ...submitBtn, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)" }}>
+                <span style={{ color:"#fff", fontWeight:"700", fontSize:"15px" }}>← Voltar ao login</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ══ ESQUECEU SENHA ══ */}
+        {screen === "forgot-password" && (
+          <div style={card}>
+            <Corners color="#818cf8" />
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20 }}>
+              <button onClick={() => goTo("login")} style={backBtn}>← Voltar</button>
+              <div style={{ flex:1 }}>
+                <h2 style={{ ...cardTitle, margin:0, fontSize:"1.3rem" }}>🔑 Esqueceu a senha?</h2>
+                <p style={{ ...cardSub, margin:0 }}>Enviaremos um link para redefinir</p>
+              </div>
+            </div>
+            <div style={divider} />
+            {error   && <div style={alertError}>⚠️ {error}</div>}
+            {success && <div style={alertSuccess}>✅ {success}</div>}
+            {!success && (
+              <form onSubmit={handleForgotPassword} style={formBody}>
+                <div style={fieldGroup}>
+                  <label style={fieldLabel}>Email da conta</label>
+                  <input type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle} onFocus={focus} onBlur={blur} required />
+                </div>
+                <button type="submit" disabled={loading}
+                  style={{ ...submitBtn, background:"linear-gradient(135deg,#6366f1,#4f46e5)", opacity:loading?0.6:1, cursor:loading?"not-allowed":"pointer" }}>
+                  <span style={{ color:"#fff", fontWeight:"700", fontSize:"15px", letterSpacing:"1px" }}>
+                    {loading ? "Enviando..." : "ENVIAR LINK"}
+                  </span>
+                </button>
+              </form>
+            )}
+            {success && (
+              <button onClick={() => goTo("login")} style={{ ...submitBtn, background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", marginTop:8 }}>
+                <span style={{ color:"rgba(255,255,255,0.7)", fontWeight:"700", fontSize:"15px" }}>← Voltar ao login</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ══ REDEFINIR SENHA ══ */}
+        {screen === "reset-password" && (
+          <div style={card}>
+            <Corners color="#f59e0b" />
+            <div style={{ textAlign:"center", marginBottom:20 }}>
+              <div style={{ fontSize:"2rem", marginBottom:8 }}>🔐</div>
+              <h2 style={{ ...cardTitle, marginBottom:4 }}>Nova senha</h2>
+              <p style={{ ...cardSub }}>Digite sua nova senha abaixo</p>
+            </div>
+            <div style={divider} />
+            {error && <div style={alertError}>⚠️ {error}</div>}
+            <form onSubmit={handleResetPassword} style={formBody}>
+              <div style={fieldGroup}>
+                <label style={fieldLabel}>Nova senha</label>
+                <input type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} style={inputStyle} onFocus={focus} onBlur={blur} required />
+              </div>
+              <div style={fieldGroup}>
+                <label style={fieldLabel}>Confirmar nova senha</label>
+                <input type="password" placeholder="••••••••" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} style={inputStyle} onFocus={focus} onBlur={blur} required />
+              </div>
+              <button type="submit" disabled={loading}
+                style={{ ...submitBtn, background:"linear-gradient(135deg,#f59e0b,#d97706)", opacity:loading?0.6:1, cursor:loading?"not-allowed":"pointer" }}>
+                <span style={{ color:"#fff", fontWeight:"700", fontSize:"15px", letterSpacing:"1px" }}>
+                  {loading ? "Salvando..." : "REDEFINIR SENHA"}
+                </span>
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ══ RESET OK ══ */}
+        {screen === "reset-success" && (
+          <div style={card}>
+            <Corners color="#22c55e" />
+            <div style={{ textAlign:"center", padding:"10px 0" }}>
+              <div style={{ fontSize:"3.5rem", marginBottom:16 }}>✅</div>
+              <h2 style={{ ...cardTitle, marginBottom:8, color:"#22c55e" }}>Senha redefinida!</h2>
+              <p style={{ color:"rgba(255,255,255,0.5)", fontSize:"0.88rem", lineHeight:1.6, marginBottom:28 }}>
+                Sua senha foi atualizada com sucesso.<br/>Faça login com a nova senha.
+              </p>
+              <button onClick={() => goTo("login")} style={{ ...submitBtn, background:"linear-gradient(135deg,#22c55e,#16a34a)" }}>
+                <span style={{ color:"#fff", fontWeight:"700", fontSize:"15px", letterSpacing:"1px" }}>FAZER LOGIN</span>
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   )
 }
 
-// ── helper de cantos ──
+// ── helpers ──
 function Corners({ color = "rgba(99,102,241,0.7)" }) {
   const base = { position:"absolute", width:"20px", height:"20px" }
   return (
@@ -357,15 +581,8 @@ function Corners({ color = "rgba(99,102,241,0.7)" }) {
     </>
   )
 }
-
-// helper dos botões de escolha
 function choiceBtn(color) {
-  return {
-    width:"100%", padding:"20px", borderRadius:14, cursor:"pointer",
-    border:`1px solid ${color}33`,
-    background:`linear-gradient(135deg, ${color}11, ${color}08)`,
-    backdropFilter:"blur(8px)", textAlign:"center", transition:"all 0.2s",
-  }
+  return { width:"100%", padding:"20px", borderRadius:14, cursor:"pointer", border:`1px solid ${color}33`, background:`linear-gradient(135deg, ${color}11, ${color}08)`, backdropFilter:"blur(8px)", textAlign:"center", transition:"all 0.2s" }
 }
 
 // ── ESTILOS ──
@@ -388,7 +605,8 @@ const formBody     = { display:"flex", flexDirection:"column", gap:"16px" }
 const fieldGroup   = { display:"flex", flexDirection:"column", gap:"7px" }
 const fieldLabel   = { fontSize:"12px", fontWeight:"500", color:"rgba(255,255,255,0.6)", letterSpacing:"0.5px" }
 const inputStyle   = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:"50px", padding:"13px 20px", color:"white", fontSize:"14px", outline:"none", transition:"all 0.2s", width:"100%", boxSizing:"border-box", colorScheme:"dark" }
-const submitBtn    = { width:"100%", padding:"14px", borderRadius:"50px", border:"none", background:"white", marginTop:"8px", transition:"all 0.2s", boxShadow:"0 4px 20px rgba(255,255,255,0.15)" }
+const submitBtn    = { width:"100%", padding:"14px", borderRadius:"50px", border:"none", background:"white", marginTop:"8px", transition:"all 0.2s", boxShadow:"0 4px 20px rgba(255,255,255,0.15)", cursor:"pointer" }
 const toggleRow    = { display:"flex", justifyContent:"center", alignItems:"center", gap:"8px", marginTop:"20px" }
 const toggleText   = { fontSize:"13px", color:"rgba(255,255,255,0.4)" }
 const toggleBtn    = { background:"none", border:"none", fontSize:"13px", fontWeight:"600", cursor:"pointer", padding:0 }
+const backBtn      = { background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, color:"rgba(255,255,255,0.6)", padding:"6px 12px", cursor:"pointer", fontSize:13, flexShrink:0 }

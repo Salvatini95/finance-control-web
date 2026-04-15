@@ -20,6 +20,11 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Login />} />
+
+          {/* ✅ rotas públicas para email verification e reset */}
+          <Route path="/verify-email"   element={<Login />} />
+          <Route path="/reset-password" element={<Login />} />
+
           <Route path="/dashboard" element={
             <ProtectedRoute><Dashboard /></ProtectedRoute>
           } />
