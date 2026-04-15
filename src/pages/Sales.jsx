@@ -65,6 +65,8 @@ export default function Sales() {
   const [search, setSearch]                   = useState("");
   const [completing, setCompleting]           = useState(false);
   const [teamUsers, setTeamUsers]             = useState([]);
+  // ✅ novo estado para o modal de arquivo
+  const [fileModal, setFileModal]             = useState(null);
 
   async function fetchAll() {
     setLoading(true);
@@ -74,19 +76,15 @@ export default function Sales() {
         fetch(`${API}/clients`,  { headers: { Authorization: `Bearer ${token()}` } }),
         fetch(`${API}/products`, { headers: { Authorization: `Bearer ${token()}` } }),
       ];
-      // admin/financial busca lista de usuários para filtro
       if (role === "admin" || role === "financial") {
         requests.push(fetch(`${API}/company/users`, { headers: { Authorization: `Bearer ${token()}` } }));
       }
-
       const responses = await Promise.all(requests);
       if (responses[0].status === 401) { localStorage.removeItem("token"); navigate("/"); return; }
       const [dataO, dataC, dataP] = await Promise.all([responses[0].json(), responses[1].json(), responses[2].json()]);
-
       setAllOrders(Array.isArray(dataO) ? dataO : []);
       setClients(Array.isArray(dataC) ? dataC : []);
       setProducts(Array.isArray(dataP) ? dataP : []);
-
       if (responses[3]) {
         const dataU = await responses[3].json();
         setTeamUsers(Array.isArray(dataU) ? dataU : []);
@@ -97,10 +95,7 @@ export default function Sales() {
 
   useEffect(() => { fetchAll(); }, []);
 
-  // ✅ vendedor vê só as próprias vendas
-  const orders = isSeller
-    ? allOrders.filter(o => o.user_id === myUserId)
-    : allOrders;
+  const orders = isSeller ? allOrders.filter(o => o.user_id === myUserId) : allOrders;
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -110,53 +105,52 @@ export default function Sales() {
   function openCreate() { setEditing(null); setForm(EMPTY_FORM); setItems([]); setView("form"); }
   function openEdit(o) {
     setEditing(o);
-    setForm({ client_id: o.client_id, status: o.status, notes: o.notes || "", payment_terms: o.payment_terms || "", discount: o.discount || 0 });
+    setForm({ client_id:o.client_id, status:o.status, notes:o.notes||"", payment_terms:o.payment_terms||"", discount:o.discount||0 });
     setItems(o.items || []);
     setView("form");
   }
 
-  function addItem() { setItems(prev => [...prev, { product_id: "", name: "", unit: "un", qty: 1, price: 0, total: 0 }]); }
-  function removeItem(idx) { setItems(prev => prev.filter((_, i) => i !== idx)); }
+  function addItem() { setItems(prev => [...prev, { product_id:"", name:"", unit:"un", qty:1, price:0, total:0 }]); }
+  function removeItem(idx) { setItems(prev => prev.filter((_,i) => i!==idx)); }
   function updateItem(idx, fld, value) {
     setItems(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [fld]: value };
-      if (fld === "qty" || fld === "price") next[idx].total = parseFloat(next[idx].qty || 0) * parseFloat(next[idx].price || 0);
+      if (fld==="qty"||fld==="price") next[idx].total = parseFloat(next[idx].qty||0) * parseFloat(next[idx].price||0);
       return next;
     });
   }
   function selectProduct(idx, productId) {
-    const p = products.find(p => String(p.id) === String(productId));
+    const p = products.find(p => String(p.id)===String(productId));
     if (!p) return;
     setItems(prev => {
       const next = [...prev];
-      next[idx] = { ...next[idx], product_id: p.id, name: p.name, unit: p.unit || "un", price: p.price, total: parseFloat(next[idx].qty || 1) * p.price };
+      next[idx] = { ...next[idx], product_id:p.id, name:p.name, unit:p.unit||"un", price:p.price, total:parseFloat(next[idx].qty||1)*p.price };
       return next;
     });
   }
 
-  const subtotal    = items.reduce((s, i) => s + parseFloat(i.qty || 0) * parseFloat(i.price || 0), 0);
-  const discountAmt = subtotal * (parseFloat(form.discount || 0) / 100);
+  const subtotal    = items.reduce((s,i) => s + parseFloat(i.qty||0)*parseFloat(i.price||0), 0);
+  const discountAmt = subtotal * (parseFloat(form.discount||0)/100);
   const total       = subtotal - discountAmt;
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.client_id) { showToast("Selecione um cliente.", "error"); return; }
-    const payload = { ...form, client_id: parseInt(form.client_id), discount: parseFloat(form.discount || 0), items };
+    const payload = { ...form, client_id:parseInt(form.client_id), discount:parseFloat(form.discount||0), items };
     const url    = editing ? `${API}/orders/${editing.id}` : `${API}/orders`;
     const method = editing ? "PUT" : "POST";
     try {
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` }, body: JSON.stringify(payload) });
-      if (res.ok) { showToast(editing ? "Venda atualizada!" : "Venda criada!"); setView("list"); fetchAll(); }
-      else { const err = await res.json(); showToast(err.msg || "Erro.", "error"); }
+      const res = await fetch(url, { method, headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` }, body:JSON.stringify(payload) });
+      if (res.ok) { showToast(editing?"Venda atualizada!":"Venda criada!"); setView("list"); fetchAll(); }
+      else { const err = await res.json(); showToast(err.msg||"Erro.", "error"); }
     } catch { showToast("Erro de conexão.", "error"); }
   }
 
   async function changeStatus(o, status) {
     try {
       await fetch(`${API}/orders/${o.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        method:"PATCH", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
         body: JSON.stringify({ status }),
       });
       fetchAll();
@@ -167,63 +161,58 @@ export default function Sales() {
     setCompleting(true);
     try {
       const res  = await fetch(`${API}/orders/${order.id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
       });
       const data = await res.json();
       if (res.ok) {
         showToast(`✅ ${data.msg} — ${fmt(data.total)} lançado em Transações!`);
         setCompleteConfirm(null);
         fetchAll();
-      } else {
-        showToast(data.msg || "Erro ao concluir.", "error");
-      }
+      } else { showToast(data.msg||"Erro ao concluir.", "error"); }
     } catch { showToast("Erro de conexão.", "error"); }
     finally { setCompleting(false); }
   }
 
   async function handleDelete(id) {
     try {
-      const res = await fetch(`${API}/orders/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+      const res = await fetch(`${API}/orders/${id}`, { method:"DELETE", headers:{ Authorization:`Bearer ${token()}` } });
       if (res.ok) { showToast("Venda removida."); setDeleteConfirm(null); fetchAll(); }
-      else { const err = await res.json(); showToast(err.msg || "Erro ao remover.", "error"); }
+      else { const err = await res.json(); showToast(err.msg||"Erro ao remover.", "error"); }
     } catch { showToast("Erro de conexão.", "error"); }
   }
 
-  // ✅ filtros combinados
   const filtered = orders.filter(o => {
-    const statusOk = filterStatus === "all" || o.status === filterStatus;
-    const userOk   = filterUser === "all" || String(o.user_id) === String(filterUser);
-    const searchOk = o.number.toLowerCase().includes(search.toLowerCase()) ||
-                     o.client_name.toLowerCase().includes(search.toLowerCase());
+    const statusOk = filterStatus==="all" || o.status===filterStatus;
+    const userOk   = filterUser==="all" || String(o.user_id)===String(filterUser);
+    const searchOk = o.number.toLowerCase().includes(search.toLowerCase()) || o.client_name.toLowerCase().includes(search.toLowerCase());
     return statusOk && userOk && searchOk;
   });
 
-  const totalVendas     = orders.filter(o => o.status === "done").reduce((s, o) => s + o.total, 0);
-  const totalAbertas    = orders.filter(o => o.status === "open").length;
-  const totalAndamento  = orders.filter(o => o.status === "in_progress").length;
-  const totalConcluidas = orders.filter(o => o.status === "done").length;
+  const totalVendas     = orders.filter(o=>o.status==="done").reduce((s,o)=>s+o.total,0);
+  const totalAbertas    = orders.filter(o=>o.status==="open").length;
+  const totalAndamento  = orders.filter(o=>o.status==="in_progress").length;
+  const totalConcluidas = orders.filter(o=>o.status==="done").length;
 
   // ── estilos ──
-  const inputStyle = {
-    background: theme.bgInput, border: `1px solid ${isGlass ? "rgba(255,255,255,0.4)" : theme.borderInput}`,
-    borderRadius: 10, padding: "10px 14px", color: theme.textPrimary,
-    fontSize: "0.9rem", outline: "none", width: "100%",
-    boxSizing: "border-box", transition: "border-color 0.2s", colorScheme,
-    ...(isGlass && { backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }),
-  };
-  const selectStyle  = { ...inputStyle, cursor: "pointer" };
-  const modalBg      = isGlass
-    ? { backdropFilter:"blur(18px) saturate(180%)", WebkitBackdropFilter:"blur(18px) saturate(180%)", background:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.6)" }
-    : { background: theme.bgModal, border: `1px solid ${theme.borderCard}` };
-  const btnPrimary   = { background: theme.primaryGrad, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem", boxShadow:`0 4px 15px ${theme.primary}33` };
-  const btnSecondary = { background: isGlass?"rgba(255,255,255,0.3)":theme.bgCard, color:theme.textSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem" };
-  const formCard     = { background: isGlass?"rgba(255,255,255,0.2)":theme.bgCard, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:14, padding:24, marginBottom:24, ...(isGlass && { backdropFilter:"blur(18px) saturate(180%)", WebkitBackdropFilter:"blur(18px) saturate(180%)" }) };
+  const inputStyle   = { background:theme.bgInput, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderInput}`, borderRadius:10, padding:"10px 14px", color:theme.textPrimary, fontSize:"0.9rem", outline:"none", width:"100%", boxSizing:"border-box", transition:"border-color 0.2s", colorScheme, ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
+  const selectStyle  = { ...inputStyle, cursor:"pointer" };
+  const modalBg      = isGlass ? { backdropFilter:"blur(18px) saturate(180%)", WebkitBackdropFilter:"blur(18px) saturate(180%)", background:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.6)" } : { background:theme.bgModal, border:`1px solid ${theme.borderCard}` };
+  const btnPrimary   = { background:theme.primaryGrad, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem", boxShadow:`0 4px 15px ${theme.primary}33` };
+  const btnSecondary = { background:isGlass?"rgba(255,255,255,0.3)":theme.bgCard, color:theme.textSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem" };
+  const formCard     = { background:isGlass?"rgba(255,255,255,0.2)":theme.bgCard, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:14, padding:24, marginBottom:24, ...(isGlass&&{backdropFilter:"blur(18px) saturate(180%)",WebkitBackdropFilter:"blur(18px) saturate(180%)"}) };
   const sectionLabel = { fontSize:"11px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:theme.textMuted, margin:"0 0 14px 2px" };
   const fieldStyle   = { display:"flex", flexDirection:"column", gap:6 };
   const labelStyle   = { color:theme.textSecondary, fontSize:"0.8rem", fontWeight:600 };
-  const th           = { textAlign:"left", padding:"12px 16px", color:theme.textMuted, fontWeight:600, fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", background: isGlass?"rgba(255,255,255,0.1)":theme.bgCard, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}`, whiteSpace:"nowrap" };
+  const th           = { textAlign:"left", padding:"12px 16px", color:theme.textMuted, fontWeight:600, fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", background:isGlass?"rgba(255,255,255,0.1)":theme.bgCard, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}`, whiteSpace:"nowrap" };
   const td           = { padding:"12px 16px", verticalAlign:"middle" };
+
+  // ✅ helper — tipo do documento baseado no número
+  function docType(number) {
+    return number?.startsWith("OS-") ? "Ordem de Serviço" : "Pedido";
+  }
+  function docIcon(number) {
+    return number?.startsWith("OS-") ? "⚙️" : "📦";
+  }
 
   // ══════════════════════
   // VIEW: FORMULÁRIO
@@ -232,41 +221,41 @@ export default function Sales() {
     return (
       <PageLayout>
         <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-        <div style={{ flex:1, padding: isMobile?"72px 16px 40px":"32px 36px", overflowY:"auto", position:"relative", zIndex:1 }}>
+        <div style={{ flex:1, padding:isMobile?"72px 16px 40px":"32px 36px", overflowY:"auto", position:"relative", zIndex:1 }}>
           <div style={{ marginBottom:24 }}>
             <button style={{ ...btnSecondary, marginBottom:12, fontSize:"0.82rem" }} onClick={() => setView("list")}>← Voltar</button>
-            <h1 style={{ fontSize: isMobile?"1.3rem":"1.75rem", fontWeight:700, margin:0, color:theme.textPrimary }}>
-              {editing ? `Editar Venda — ${editing.number}` : "Nova Venda"}
+            <h1 style={{ fontSize:isMobile?"1.3rem":"1.75rem", fontWeight:700, margin:0, color:theme.textPrimary }}>
+              {editing ? `Editar — ${editing.number}` : "Nova Venda"}
             </h1>
           </div>
           <form onSubmit={handleSubmit}>
             <div style={formCard}>
               <p style={sectionLabel}>📋 Dados da Venda</p>
-              <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr 1fr", gap:16 }}>
-                <div style={{ ...fieldStyle, gridColumn: isMobile?"1":"1 / -1" }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:16 }}>
+                <div style={{ ...fieldStyle, gridColumn:isMobile?"1":"1 / -1" }}>
                   <label style={labelStyle}>Cliente *</label>
-                  <select style={selectStyle} required value={form.client_id} onChange={e => setForm({...form, client_id:e.target.value})}>
+                  <select style={selectStyle} required value={form.client_id} onChange={e=>setForm({...form,client_id:e.target.value})}>
                     <option value="">— Selecione o cliente —</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Status</label>
-                  <select style={selectStyle} value={form.status} onChange={e => setForm({...form, status:e.target.value})}>
-                    {Object.entries(STATUS_MAP).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+                  <select style={selectStyle} value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
+                    {Object.entries(STATUS_MAP).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                   </select>
                 </div>
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Desconto Global (%)</label>
-                  <input style={inputStyle} type="number" min="0" max="100" step="0.1" placeholder="0" value={form.discount} onChange={e => setForm({...form, discount:e.target.value})} />
+                  <input style={inputStyle} type="number" min="0" max="100" step="0.1" placeholder="0" value={form.discount} onChange={e=>setForm({...form,discount:e.target.value})} />
                 </div>
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Condições de Pagamento</label>
-                  <input style={inputStyle} placeholder="Ex: À vista, 30/60 dias..." value={form.payment_terms} onChange={e => setForm({...form, payment_terms:e.target.value})} />
+                  <input style={inputStyle} placeholder="Ex: À vista, 30/60 dias..." value={form.payment_terms} onChange={e=>setForm({...form,payment_terms:e.target.value})} />
                 </div>
-                <div style={{ ...fieldStyle, gridColumn: isMobile?"1":"1 / -1" }}>
+                <div style={{ ...fieldStyle, gridColumn:isMobile?"1":"1 / -1" }}>
                   <label style={labelStyle}>Observações</label>
-                  <textarea style={{ ...inputStyle, resize:"vertical", minHeight:70 }} placeholder="Informações adicionais..." value={form.notes} onChange={e => setForm({...form, notes:e.target.value})} />
+                  <textarea style={{ ...inputStyle, resize:"vertical", minHeight:70 }} placeholder="Informações adicionais..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} />
                 </div>
               </div>
             </div>
@@ -276,7 +265,7 @@ export default function Sales() {
                 <p style={{ ...sectionLabel, marginBottom:0 }}>📦 Produtos & Serviços</p>
                 <button type="button" style={{ ...btnSecondary, fontSize:"0.82rem", padding:"7px 14px" }} onClick={addItem}>+ Adicionar Item</button>
               </div>
-              {items.length === 0 ? (
+              {items.length===0 ? (
                 <div style={{ textAlign:"center", color:theme.textMuted, padding:"32px 0" }}>Nenhum item. Clique em "+ Adicionar Item".</div>
               ) : (
                 <>
@@ -285,28 +274,28 @@ export default function Sales() {
                       <span>Produto / Serviço</span><span>Unid.</span><span>Qtd.</span><span>Preço Unit.</span><span>Total</span><span></span>
                     </div>
                   )}
-                  {items.map((item, idx) => (
-                    <div key={idx} style={{ display:"grid", gridTemplateColumns: isMobile?"1fr":"3fr 1fr 1fr 1.5fr 1.5fr 36px", gap:10, marginBottom:16, padding: isMobile?"16px":"0", background: isMobile?(isGlass?"rgba(255,255,255,0.15)":theme.bgCard):"transparent", borderRadius: isMobile?10:0, border: isMobile?`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`:"none" }}>
+                  {items.map((item,idx) => (
+                    <div key={idx} style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"3fr 1fr 1fr 1.5fr 1.5fr 36px", gap:10, marginBottom:16, padding:isMobile?"16px":"0", background:isMobile?(isGlass?"rgba(255,255,255,0.15)":theme.bgCard):"transparent", borderRadius:isMobile?10:0, border:isMobile?`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`:"none" }}>
                       <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                        {isMobile && <label style={labelStyle}>Produto / Serviço</label>}
-                        <select style={{ ...selectStyle, marginBottom:4 }} value={item.product_id||""} onChange={e => selectProduct(idx, e.target.value)}>
+                        {isMobile&&<label style={labelStyle}>Produto / Serviço</label>}
+                        <select style={{ ...selectStyle, marginBottom:4 }} value={item.product_id||""} onChange={e=>selectProduct(idx,e.target.value)}>
                           <option value="">— Selecione —</option>
-                          {products.filter(p=>p.active).map(p => (
+                          {products.filter(p=>p.active).map(p=>(
                             <option key={p.id} value={p.id}>
                               {p.type==="product"?"📦":"⚙️"} {p.name} ({fmt(p.price)}){p.type==="product"?` · Estq: ${p.stock_qty}`:""}
                             </option>
                           ))}
                         </select>
-                        <input style={{ ...inputStyle, fontSize:"0.8rem" }} placeholder="Ou descreva manualmente" value={item.name} onChange={e => updateItem(idx,"name",e.target.value)} />
+                        <input style={{ ...inputStyle, fontSize:"0.8rem" }} placeholder="Ou descreva manualmente" value={item.name} onChange={e=>updateItem(idx,"name",e.target.value)} />
                       </div>
-                      <div>{isMobile&&<label style={labelStyle}>Unid.</label>}<input style={inputStyle} value={item.unit} onChange={e => updateItem(idx,"unit",e.target.value)} /></div>
-                      <div>{isMobile&&<label style={labelStyle}>Qtd.</label>}<input style={inputStyle} type="number" min="1" step="0.01" value={item.qty} onChange={e => updateItem(idx,"qty",e.target.value)} /></div>
-                      <div>{isMobile&&<label style={labelStyle}>Preço</label>}<input style={inputStyle} type="number" min="0" step="0.01" value={item.price} onChange={e => updateItem(idx,"price",e.target.value)} /></div>
+                      <div>{isMobile&&<label style={labelStyle}>Unid.</label>}<input style={inputStyle} value={item.unit} onChange={e=>updateItem(idx,"unit",e.target.value)} /></div>
+                      <div>{isMobile&&<label style={labelStyle}>Qtd.</label>}<input style={inputStyle} type="number" min="1" step="0.01" value={item.qty} onChange={e=>updateItem(idx,"qty",e.target.value)} /></div>
+                      <div>{isMobile&&<label style={labelStyle}>Preço</label>}<input style={inputStyle} type="number" min="0" step="0.01" value={item.price} onChange={e=>updateItem(idx,"price",e.target.value)} /></div>
                       <div style={{ display:"flex", alignItems:"center", color:theme.income, fontWeight:700, fontSize:"0.95rem" }}>
                         {isMobile&&<label style={{ ...labelStyle, marginRight:8 }}>Total:</label>}
                         {fmt(parseFloat(item.qty||0)*parseFloat(item.price||0))}
                       </div>
-                      <button type="button" style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, cursor:"pointer", color:"#ef4444", width: isMobile?"100%":36, height: isMobile?"auto":36, padding: isMobile?"8px":0 }} onClick={() => removeItem(idx)}>
+                      <button type="button" style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, cursor:"pointer", color:"#ef4444", width:isMobile?"100%":36, height:isMobile?"auto":36, padding:isMobile?"8px":0 }} onClick={()=>removeItem(idx)}>
                         {isMobile?"Remover":"✕"}
                       </button>
                     </div>
@@ -329,13 +318,13 @@ export default function Sales() {
               )}
             </div>
 
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:12, marginBottom:48, flexDirection: isMobile?"column":"row" }}>
-              <button type="button" style={{ ...btnSecondary, width: isMobile?"100%":"auto" }} onClick={() => setView("list")}>Cancelar</button>
-              <button type="submit" style={{ ...btnPrimary, width: isMobile?"100%":"auto" }}>{editing?"Salvar Alterações":"Criar Venda"}</button>
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:12, marginBottom:48, flexDirection:isMobile?"column":"row" }}>
+              <button type="button" style={{ ...btnSecondary, width:isMobile?"100%":"auto" }} onClick={()=>setView("list")}>Cancelar</button>
+              <button type="submit" style={{ ...btnPrimary, width:isMobile?"100%":"auto" }}>{editing?"Salvar Alterações":"Criar Venda"}</button>
             </div>
           </form>
         </div>
-        {toast && <div style={{ position:"fixed", bottom:28, right:28, color:"#fff", padding:"12px 22px", borderRadius:12, fontWeight:600, fontSize:"0.9rem", zIndex:9999, background: toast.type==="error"?"#ef4444":theme.primaryGrad }}>{toast.msg}</div>}
+        {toast&&<div style={{ position:"fixed", bottom:28, right:28, color:"#fff", padding:"12px 22px", borderRadius:12, fontWeight:600, fontSize:"0.9rem", zIndex:9999, background:toast.type==="error"?"#ef4444":theme.primaryGrad }}>{toast.msg}</div>}
       </PageLayout>
     );
   }
@@ -354,39 +343,42 @@ export default function Sales() {
         .sv-row:hover { background:${isGlass?"rgba(255,255,255,0.15)":`${theme.primary}0d`} !important; }
         .btn-complete { background:linear-gradient(135deg,#22c55e,#16a34a); color:#fff; border:none; border-radius:8px; padding:6px 12px; cursor:pointer; font-size:0.82rem; font-weight:700; white-space:nowrap; box-shadow:0 4px 12px rgba(34,197,94,0.4); transition:transform 0.15s, box-shadow 0.15s; }
         .btn-complete:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(34,197,94,0.5); }
+        .number-link { cursor:pointer; text-decoration:underline; text-underline-offset:3px; text-decoration-style:dotted; transition:color 0.15s; }
+        .number-link:hover { opacity:0.75; }
         @media (max-width:768px) { .card3d-sv { transform:none !important; } .card3d-sv:hover { transform:translateY(-6px) !important; } }
       `}</style>
 
       <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
-      <div style={{ flex:1, padding: isMobile?"72px 16px 40px":"32px 36px", overflowY:"auto", position:"relative", zIndex:1 }}>
+      <div style={{ flex:1, padding:isMobile?"72px 16px 40px":"32px 36px", overflowY:"auto", position:"relative", zIndex:1 }}>
 
+        {/* HEADER */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:28, flexWrap:"wrap", gap:12 }}>
           <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-            <img src={logoGif} alt="logo" style={{ width: isMobile?44:60, height: isMobile?44:60, objectFit:"contain", filter:"drop-shadow(0 0 10px rgba(255,255,255,0.3))" }} />
+            <img src={logoGif} alt="logo" style={{ width:isMobile?44:60, height:isMobile?44:60, objectFit:"contain", filter:"drop-shadow(0 0 10px rgba(255,255,255,0.3))" }} />
             <div>
-              <h1 style={{ fontSize: isMobile?"20px":"1.75rem", fontWeight:700, margin:0, color:theme.textPrimary }}>
-                Vendas {isSeller && <span style={{ fontSize:"0.75rem", color:theme.textMuted, fontWeight:400 }}>(suas vendas)</span>}
+              <h1 style={{ fontSize:isMobile?"20px":"1.75rem", fontWeight:700, margin:0, color:theme.textPrimary }}>
+                Vendas {isSeller&&<span style={{ fontSize:"0.75rem", color:theme.textMuted, fontWeight:400 }}>(suas vendas)</span>}
               </h1>
-              <p style={{ color:theme.textMuted, margin:"4px 0 0", fontSize:"0.85rem" }}>Gerencie suas vendas e ordens de serviço</p>
+              <p style={{ color:theme.textMuted, margin:"4px 0 0", fontSize:"0.85rem" }}>Clique no número para ver o arquivo completo</p>
             </div>
           </div>
           <button style={{ ...btnPrimary, whiteSpace:"nowrap" }} onClick={openCreate}>+ Nova Venda</button>
         </div>
 
         {/* CARDS */}
-        <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"repeat(4,1fr)", gap:16, marginBottom:28 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)", gap:16, marginBottom:28 }}>
           {[
-            { icon:"💰", label:"Faturado",     value: fmt(totalVendas),   color:"#22c55e", border: isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.3)"  },
-            { icon:"🔵", label:"Abertas",       value: totalAbertas,       color:"#3b82f6", border: isGlass?"rgba(255,255,255,0.5)":"rgba(59,130,246,0.3)"  },
-            { icon:"🟡", label:"Em andamento",  value: totalAndamento,     color:"#f59e0b", border: isGlass?"rgba(255,255,255,0.5)":"rgba(245,158,11,0.3)"  },
-            { icon:"✅", label:"Concluídas",    value: totalConcluidas,    color:"#22c55e", border: isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.3)"   },
-          ].map((c,i) => (
+            { icon:"💰", label:"Faturado",    value:fmt(totalVendas),  color:"#22c55e", border:isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.3)"  },
+            { icon:"🔵", label:"Abertas",      value:totalAbertas,      color:"#3b82f6", border:isGlass?"rgba(255,255,255,0.5)":"rgba(59,130,246,0.3)"  },
+            { icon:"🟡", label:"Em andamento", value:totalAndamento,    color:"#f59e0b", border:isGlass?"rgba(255,255,255,0.5)":"rgba(245,158,11,0.3)"  },
+            { icon:"✅", label:"Concluídas",   value:totalConcluidas,   color:"#22c55e", border:isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.3)"   },
+          ].map((c,i)=>(
             <div key={i} className="card3d-sv" style={{ border:`1px solid ${c.border}` }}>
               <div style={{ fontSize:"1.5rem" }}>{c.icon}</div>
               <div>
                 <div style={{ color:theme.textMuted, fontSize:"0.75rem", marginBottom:2 }}>{c.label}</div>
-                <div style={{ color:c.color, fontWeight:700, fontSize: isMobile?"0.95rem":"1.1rem" }}>{c.value}</div>
+                <div style={{ color:c.color, fontWeight:700, fontSize:isMobile?"0.95rem":"1.1rem" }}>{c.value}</div>
               </div>
             </div>
           ))}
@@ -394,30 +386,18 @@ export default function Sales() {
 
         {/* FILTROS */}
         <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:20, alignItems:"center" }}>
-          <input style={{ ...inputStyle, width: isMobile?"100%":"240px" }}
-            type="text" placeholder="🔍 Buscar número ou cliente..."
-            value={search} onChange={e => setSearch(e.target.value)} />
-
-          {/* ✅ filtro por vendedor — só para admin/financial */}
-          {!isSeller && teamUsers.length > 0 && (
-            <select style={{ ...selectStyle, width: isMobile?"100%":"200px" }}
-              value={filterUser} onChange={e => setFilterUser(e.target.value)}>
+          <input style={{ ...inputStyle, width:isMobile?"100%":"240px" }} type="text" placeholder="🔍 Buscar número ou cliente..." value={search} onChange={e=>setSearch(e.target.value)} />
+          {!isSeller && teamUsers.length>0 && (
+            <select style={{ ...selectStyle, width:isMobile?"100%":"200px" }} value={filterUser} onChange={e=>setFilterUser(e.target.value)}>
               <option value="all">👥 Todos os vendedores</option>
-              {teamUsers.filter(u => u.role === "seller" || u.role === "admin").map(u => (
+              {teamUsers.filter(u=>u.role==="seller"||u.role==="admin").map(u=>(
                 <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
               ))}
             </select>
           )}
-
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            {["all",...Object.keys(STATUS_MAP)].map(s => (
-              <button key={s} style={{
-                background: filterStatus===s ? `${theme.primary}33` : (isGlass?"rgba(255,255,255,0.2)":theme.bgCard),
-                color: filterStatus===s ? theme.textActive : theme.textMuted,
-                border: filterStatus===s ? `1px solid ${theme.primary}66` : `1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`,
-                borderRadius:8, padding:"6px 14px", fontSize:"0.82rem", cursor:"pointer",
-                ...(isGlass && { backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)" }),
-              }} onClick={() => setFilterStatus(s)}>
+            {["all",...Object.keys(STATUS_MAP)].map(s=>(
+              <button key={s} style={{ background:filterStatus===s?`${theme.primary}33`:(isGlass?"rgba(255,255,255,0.2)":theme.bgCard), color:filterStatus===s?theme.textActive:theme.textMuted, border:filterStatus===s?`1px solid ${theme.primary}66`:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:8, padding:"6px 14px", fontSize:"0.82rem", cursor:"pointer", ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) }} onClick={()=>setFilterStatus(s)}>
                 {s==="all"?"Todas":STATUS_MAP[s].label}
               </button>
             ))}
@@ -428,74 +408,80 @@ export default function Sales() {
         <div className="table3d-sv">
           {loading ? (
             <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"60px 0", color:theme.textMuted }}>Carregando...</div>
-          ) : filtered.length === 0 ? (
+          ) : filtered.length===0 ? (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"60px 0", gap:12, color:theme.textMuted }}>
               <span style={{ fontSize:"2rem" }}>🛒</span>
               <p>{search?"Nenhuma venda encontrada":"Nenhuma venda cadastrada ainda"}</p>
             </div>
           ) : (
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"0.88rem", minWidth: isMobile?"600px":"unset" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"0.88rem", minWidth:isMobile?"600px":"unset" }}>
               <thead>
                 <tr>
                   {(isMobile
                     ? ["Número","Cliente","Status","Total","Ações"]
                     : ["Número","Cliente","Vendedor","Origem","Total","Criado em","Concluído em","Status","Ações"]
-                  ).map(h => <th key={h} style={th}>{h}</th>)}
+                  ).map(h=><th key={h} style={th}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(o => {
-                  const st          = STATUS_MAP[o.status] || STATUS_MAP.open;
-                  const isDone      = o.status === "done";
-                  const isCancelled = o.status === "cancelled";
-                  // ✅ vendedor só opera as próprias vendas
-                  const canOperate  = !isSeller || o.user_id === myUserId;
-                  const sellerName  = teamUsers.find(u => u.id === o.user_id)?.name || "—";
+                  const st         = STATUS_MAP[o.status] || STATUS_MAP.open;
+                  const isDone     = o.status==="done";
+                  const isCancelled= o.status==="cancelled";
+                  const canOperate = !isSeller || o.user_id===myUserId;
+                  const sellerName = teamUsers.find(u=>u.id===o.user_id)?.name || "—";
 
                   return (
                     <tr key={o.id} className="sv-row" style={{ borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.15)":theme.border}` }}>
-                      <td style={{ ...td, fontWeight:700, color:theme.primary }}>{o.number}</td>
+                      {/* ✅ número clicável abre o arquivo */}
+                      <td style={td}>
+                        <div
+                          className="number-link"
+                          style={{ fontWeight:700, color:theme.primary, display:"flex", alignItems:"center", gap:6 }}
+                          onClick={() => setFileModal(o)}
+                        >
+                          <span style={{ fontSize:"0.8rem" }}>{docIcon(o.number)}</span>
+                          {o.number}
+                        </div>
+                        <div style={{ fontSize:"0.7rem", color:theme.textMuted, marginTop:2 }}>{docType(o.number)}</div>
+                      </td>
                       <td style={td}>
                         <div style={{ fontWeight:600, color:theme.textPrimary }}>{o.client_name}</div>
                       </td>
-                      {!isMobile && (
+                      {!isMobile&&<td style={td}><span style={{ color:theme.textMuted, fontSize:"0.82rem" }}>{sellerName}</span></td>}
+                      {!isMobile&&(
                         <td style={td}>
-                          <span style={{ color:theme.textMuted, fontSize:"0.82rem" }}>{sellerName}</span>
-                        </td>
-                      )}
-                      {!isMobile && (
-                        <td style={td}>
-                          <span style={{ display:"inline-block", padding:"3px 10px", borderRadius:20, fontSize:"0.72rem", fontWeight:600, background: o.origin==="quote"?`${theme.accent}22`:`${theme.primary}22`, color: o.origin==="quote"?theme.accent:theme.primary }}>
+                          <span style={{ display:"inline-block", padding:"3px 10px", borderRadius:20, fontSize:"0.72rem", fontWeight:600, background:o.origin==="quote"?`${theme.accent}22`:`${theme.primary}22`, color:o.origin==="quote"?theme.accent:theme.primary }}>
                             {o.origin==="quote"?"🧾 Orçamento":"✏️ Direta"}
                           </span>
                         </td>
                       )}
-                      <td style={{ ...td, fontWeight:700, color: isDone?theme.income:theme.textPrimary }}>{fmt(o.total)}</td>
-                      {!isMobile && <td style={{ ...td, color:theme.textMuted }}>{fmtDate(o.created_at)}</td>}
-                      {!isMobile && (
+                      <td style={{ ...td, fontWeight:700, color:isDone?theme.income:theme.textPrimary }}>{fmt(o.total)}</td>
+                      {!isMobile&&<td style={{ ...td, color:theme.textMuted }}>{fmtDate(o.created_at)}</td>}
+                      {!isMobile&&(
                         <td style={td}>
-                          {isDone ? <span style={{ color:"#22c55e", fontWeight:600, fontSize:"0.85rem" }}>✅ {fmtDate(o.finished_at)}</span> : "—"}
+                          {isDone?<span style={{ color:"#22c55e", fontWeight:600, fontSize:"0.85rem" }}>✅ {fmtDate(o.finished_at)}</span>:"—"}
                         </td>
                       )}
                       <td style={td}>
                         {isDone ? (
                           <span style={{ display:"inline-block", padding:"4px 12px", borderRadius:20, fontSize:"0.75rem", fontWeight:700, background:st.bg, color:st.color, border:`1px solid ${st.color}44` }}>✅ Concluída</span>
                         ) : (
-                          <select style={{ border:"none", borderRadius:20, padding:"4px 10px", fontSize:"0.75rem", fontWeight:600, cursor: canOperate?"pointer":"not-allowed", outline:"none", colorScheme, color:st.color, background:st.bg }} value={o.status} onChange={e => canOperate && changeStatus(o, e.target.value)} disabled={isDone || !canOperate}>
-                            {Object.entries(STATUS_MAP).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+                          <select style={{ border:"none", borderRadius:20, padding:"4px 10px", fontSize:"0.75rem", fontWeight:600, cursor:canOperate?"pointer":"not-allowed", outline:"none", colorScheme, color:st.color, background:st.bg }} value={o.status} onChange={e=>canOperate&&changeStatus(o,e.target.value)} disabled={isDone||!canOperate}>
+                            {Object.entries(STATUS_MAP).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                           </select>
                         )}
                       </td>
                       <td style={td}>
                         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                          {!isDone && !isCancelled && canOperate && (
-                            <button className="btn-complete" onClick={() => setCompleteConfirm(o)}>💰 Concluir</button>
+                          {!isDone&&!isCancelled&&canOperate&&(
+                            <button className="btn-complete" onClick={()=>setCompleteConfirm(o)}>💰 Concluir</button>
                           )}
-                          {!isDone && canOperate && (
-                            <button style={{ background: isGlass?"rgba(255,255,255,0.25)":`${theme.primary}22`, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":`${theme.primary}44`}`, borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={() => openEdit(o)}>✏️</button>
+                          {!isDone&&canOperate&&(
+                            <button style={{ background:isGlass?"rgba(255,255,255,0.25)":`${theme.primary}22`, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":`${theme.primary}44`}`, borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={()=>openEdit(o)}>✏️</button>
                           )}
-                          {canOperate && (
-                            <button style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={() => setDeleteConfirm(o)}>🗑️</button>
+                          {canOperate&&(
+                            <button style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" }} onClick={()=>setDeleteConfirm(o)}>🗑️</button>
                           )}
                         </div>
                       </td>
@@ -508,16 +494,135 @@ export default function Sales() {
         </div>
       </div>
 
+      {/* ✅ MODAL ARQUIVO DA VENDA */}
+      {fileModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={()=>setFileModal(null)}>
+          <div style={{ ...modalBg, borderRadius:18, width:isMobile?"96%":"100%", maxWidth:620, maxHeight:"90vh", overflowY:"auto", boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
+
+            {/* cabeçalho do arquivo */}
+            <div style={{ padding:"24px 28px 20px", borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                    <span style={{ fontSize:"1.6rem" }}>{docIcon(fileModal.number)}</span>
+                    <div>
+                      <div style={{ fontSize:"0.72rem", color:theme.textMuted, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:600 }}>{docType(fileModal.number)}</div>
+                      <div style={{ fontSize:"1.4rem", fontWeight:800, color:theme.primary, letterSpacing:"0.5px" }}>{fileModal.number}</div>
+                    </div>
+                  </div>
+                  {/* status badge */}
+                  {(() => { const st = STATUS_MAP[fileModal.status]||STATUS_MAP.open; return (
+                    <span style={{ display:"inline-block", padding:"4px 14px", borderRadius:20, fontSize:"0.78rem", fontWeight:700, background:st.bg, color:st.color, border:`1px solid ${st.color}44` }}>{st.label}</span>
+                  ); })()}
+                </div>
+                <button style={{ background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:34, height:34, borderRadius:8, cursor:"pointer", fontSize:14, flexShrink:0 }} onClick={()=>setFileModal(null)}>✕</button>
+              </div>
+            </div>
+
+            <div style={{ padding:"20px 28px" }}>
+
+              {/* info geral */}
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:20 }}>
+                {[
+                  { label:"Cliente",         value:fileModal.client_name },
+                  { label:"Origem",          value:fileModal.origin==="quote"?"🧾 Orçamento":"✏️ Venda Direta" },
+                  { label:"Criado em",       value:fmtDate(fileModal.created_at) },
+                  { label:"Concluído em",    value:fileModal.finished_at ? fmtDate(fileModal.finished_at) : "—" },
+                  ...(fileModal.payment_terms ? [{ label:"Pagamento", value:fileModal.payment_terms }] : []),
+                  ...(!isSeller ? [{ label:"Vendedor", value:teamUsers.find(u=>u.id===fileModal.user_id)?.name||"—" }] : []),
+                ].map((f,i)=>(
+                  <div key={i} style={{ padding:"10px 14px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgPrimary, borderRadius:10, border:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.border}` }}>
+                    <div style={{ fontSize:"0.72rem", color:theme.textMuted, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>{f.label}</div>
+                    <div style={{ fontSize:"0.9rem", color:theme.textPrimary, fontWeight:600 }}>{f.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* itens */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontSize:"0.78rem", fontWeight:700, color:theme.textMuted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Itens</div>
+                <div style={{ border:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}`, borderRadius:12, overflow:"hidden" }}>
+                  {/* header */}
+                  <div style={{ display:"grid", gridTemplateColumns:"3fr 1fr 1fr 1.5fr", gap:8, padding:"10px 14px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgCard, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.2)":theme.borderCard}`, fontSize:"0.72rem", fontWeight:700, color:theme.textMuted, textTransform:"uppercase" }}>
+                    <span>Item</span><span>Qtd.</span><span>Preço</span><span style={{ textAlign:"right" }}>Total</span>
+                  </div>
+                  {(fileModal.items||[]).length===0 ? (
+                    <div style={{ padding:"20px", textAlign:"center", color:theme.textMuted, fontSize:"0.85rem" }}>Nenhum item registrado</div>
+                  ) : (
+                    (fileModal.items||[]).map((item,i)=>(
+                      <div key={i} style={{ display:"grid", gridTemplateColumns:"3fr 1fr 1fr 1.5fr", gap:8, padding:"12px 14px", borderBottom:i<(fileModal.items||[]).length-1?`1px solid ${isGlass?"rgba(255,255,255,0.15)":theme.border}`:"none", alignItems:"center" }}>
+                        <div>
+                          <div style={{ fontWeight:600, color:theme.textPrimary, fontSize:"0.88rem" }}>{item.name||"—"}</div>
+                          <div style={{ fontSize:"0.72rem", color:theme.textMuted }}>{item.unit||"un"}</div>
+                        </div>
+                        <div style={{ color:theme.textSecondary, fontSize:"0.88rem" }}>{item.qty}</div>
+                        <div style={{ color:theme.textSecondary, fontSize:"0.88rem" }}>{fmt(item.price)}</div>
+                        <div style={{ color:theme.income, fontWeight:700, fontSize:"0.9rem", textAlign:"right" }}>{fmt(parseFloat(item.qty||0)*parseFloat(item.price||0))}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* totais */}
+              <div style={{ padding:"16px 18px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgPrimary, borderRadius:12, border:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.border}`, marginBottom:20 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}>
+                  <span style={{ color:theme.textMuted }}>Subtotal</span>
+                  <span style={{ color:theme.textPrimary }}>{fmt(fileModal.subtotal)}</span>
+                </div>
+                {fileModal.discount>0 && (
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}>
+                    <span style={{ color:"#ef4444" }}>Desconto ({fileModal.discount}%)</span>
+                    <span style={{ color:"#ef4444" }}>- {fmt(fileModal.subtotal*(fileModal.discount/100))}</span>
+                  </div>
+                )}
+                <div style={{ display:"flex", justifyContent:"space-between", paddingTop:10, marginTop:4, borderTop:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.border}` }}>
+                  <span style={{ fontWeight:700, fontSize:"1rem", color:theme.textPrimary }}>TOTAL</span>
+                  <span style={{ fontWeight:800, fontSize:"1.2rem", color:theme.income }}>{fmt(fileModal.total)}</span>
+                </div>
+              </div>
+
+              {/* observações */}
+              {fileModal.notes && (
+                <div style={{ padding:"12px 16px", background:isGlass?"rgba(255,255,255,0.1)":theme.bgPrimary, borderRadius:10, border:`1px solid ${isGlass?"rgba(255,255,255,0.25)":theme.border}`, marginBottom:20 }}>
+                  <div style={{ fontSize:"0.72rem", fontWeight:700, color:theme.textMuted, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Observações</div>
+                  <div style={{ fontSize:"0.88rem", color:theme.textSecondary }}>{fileModal.notes}</div>
+                </div>
+              )}
+
+              {/* ações rápidas */}
+              <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                {fileModal.status!=="done" && fileModal.status!=="cancelled" && (!isSeller||fileModal.user_id===myUserId) && (
+                  <button style={{ ...btnPrimary, fontSize:"0.85rem", padding:"9px 16px", background:"linear-gradient(135deg,#22c55e,#16a34a)", boxShadow:"0 4px 12px rgba(34,197,94,0.4)" }}
+                    onClick={()=>{ setFileModal(null); setCompleteConfirm(fileModal); }}>
+                    💰 Concluir Venda
+                  </button>
+                )}
+                {fileModal.status!=="done" && (!isSeller||fileModal.user_id===myUserId) && (
+                  <button style={{ ...btnSecondary, fontSize:"0.85rem", padding:"9px 16px" }}
+                    onClick={()=>{ setFileModal(null); openEdit(fileModal); }}>
+                    ✏️ Editar
+                  </button>
+                )}
+                <button style={{ ...btnSecondary, fontSize:"0.85rem", padding:"9px 16px" }} onClick={()=>setFileModal(null)}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL CONCLUIR */}
       {completeConfirm && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={() => !completing && setCompleteConfirm(null)}>
-          <div style={{ ...modalBg, border: isGlass?"1px solid rgba(34,197,94,0.4)":`1px solid rgba(34,197,94,0.3)`, borderRadius:18, padding: isMobile?"28px 20px":36, width: isMobile?"92%":"100%", maxWidth:460, boxShadow: isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, backdropFilter:"blur(4px)" }} onClick={()=>!completing&&setCompleteConfirm(null)}>
+          <div style={{ ...modalBg, border:isGlass?"1px solid rgba(34,197,94,0.4)":`1px solid rgba(34,197,94,0.3)`, borderRadius:18, padding:isMobile?"28px 20px":36, width:isMobile?"92%":"100%", maxWidth:460, boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
             <div style={{ textAlign:"center", marginBottom:24 }}>
               <div style={{ fontSize:"3rem", marginBottom:12 }}>💰</div>
               <h2 style={{ margin:"0 0 8px", fontSize:"1.3rem", fontWeight:700, color:theme.textPrimary }}>Concluir Venda</h2>
               <p style={{ color:theme.textMuted, margin:0, fontSize:"0.9rem" }}>Confirmar conclusão de <strong style={{ color:theme.textPrimary }}>{completeConfirm.number}</strong>?</p>
             </div>
-            <div style={{ background: isGlass?"rgba(34,197,94,0.1)":"rgba(34,197,94,0.08)", border:"1px solid rgba(34,197,94,0.25)", borderRadius:12, padding:"16px 20px", marginBottom:24 }}>
+            <div style={{ background:isGlass?"rgba(34,197,94,0.1)":"rgba(34,197,94,0.08)", border:"1px solid rgba(34,197,94,0.25)", borderRadius:12, padding:"16px 20px", marginBottom:24 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}><span style={{ color:theme.textMuted }}>Cliente</span><span style={{ color:theme.textPrimary, fontWeight:600 }}>{completeConfirm.client_name}</span></div>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}><span style={{ color:theme.textMuted }}>Itens</span><span style={{ color:theme.textPrimary }}>{(completeConfirm.items||[]).length} item(ns)</span></div>
               <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid rgba(34,197,94,0.2)`, paddingTop:10, marginTop:4 }}><span style={{ color:"#22c55e", fontWeight:700 }}>Total a receber</span><span style={{ color:"#22c55e", fontWeight:700, fontSize:"1.1rem" }}>{fmt(completeConfirm.total)}</span></div>
@@ -525,10 +630,10 @@ export default function Sales() {
             <p style={{ color:theme.textMuted, fontSize:"0.82rem", textAlign:"center", marginBottom:20 }}>
               ✅ O valor será lançado automaticamente em <strong>Transações</strong> como entrada.
             </p>
-            <div style={{ display:"flex", gap:12, flexDirection: isMobile?"column":"row" }}>
-              <button style={{ ...btnSecondary, flex:1 }} onClick={() => setCompleteConfirm(null)} disabled={completing}>Cancelar</button>
-              <button style={{ flex:2, background:"linear-gradient(135deg,#22c55e,#16a34a)", color:"#fff", border:"none", borderRadius:10, padding:"12px 20px", fontWeight:700, cursor: completing?"not-allowed":"pointer", fontSize:"1rem", boxShadow:"0 4px 15px rgba(34,197,94,0.4)", opacity: completing?0.7:1 }} onClick={() => handleComplete(completeConfirm)} disabled={completing}>
-                {completing ? "Processando..." : "💰 Confirmar Venda"}
+            <div style={{ display:"flex", gap:12, flexDirection:isMobile?"column":"row" }}>
+              <button style={{ ...btnSecondary, flex:1 }} onClick={()=>setCompleteConfirm(null)} disabled={completing}>Cancelar</button>
+              <button style={{ flex:2, background:"linear-gradient(135deg,#22c55e,#16a34a)", color:"#fff", border:"none", borderRadius:10, padding:"12px 20px", fontWeight:700, cursor:completing?"not-allowed":"pointer", fontSize:"1rem", boxShadow:"0 4px 15px rgba(34,197,94,0.4)", opacity:completing?0.7:1 }} onClick={()=>handleComplete(completeConfirm)} disabled={completing}>
+                {completing?"Processando...":"💰 Confirmar Venda"}
               </button>
             </div>
           </div>
@@ -537,26 +642,26 @@ export default function Sales() {
 
       {/* MODAL DELETE */}
       {deleteConfirm && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={() => setDeleteConfirm(null)}>
-          <div style={{ ...modalBg, border: isGlass?"1px solid rgba(239,68,68,0.3)":`1px solid rgba(239,68,68,0.3)`, borderRadius:18, padding: isMobile?"24px 20px":32, width: isMobile?"92%":"100%", maxWidth:400, boxShadow: isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" }} onClick={()=>setDeleteConfirm(null)}>
+          <div style={{ ...modalBg, border:isGlass?"1px solid rgba(239,68,68,0.3)":`1px solid rgba(239,68,68,0.3)`, borderRadius:18, padding:isMobile?"24px 20px":32, width:isMobile?"92%":"100%", maxWidth:400, boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }} onClick={e=>e.stopPropagation()}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
               <h2 style={{ margin:0, fontSize:"1.1rem", fontWeight:700, color:"#ef4444" }}>Excluir Venda</h2>
-              <button style={{ background: isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:32, height:32, borderRadius:8, cursor:"pointer" }} onClick={() => setDeleteConfirm(null)}>✕</button>
+              <button style={{ background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:32, height:32, borderRadius:8, cursor:"pointer" }} onClick={()=>setDeleteConfirm(null)}>✕</button>
             </div>
             <p style={{ color:theme.textSecondary, marginBottom:24 }}>
               Excluir <strong style={{ color:theme.textPrimary }}>{deleteConfirm.number}</strong> de <strong style={{ color:theme.textPrimary }}>{deleteConfirm.client_name}</strong>?
-              {deleteConfirm.transaction_id && <><br/><span style={{ color:"#f59e0b", fontSize:"0.82rem" }}>⚠️ A transação vinculada também será removida.</span></>}
+              {deleteConfirm.transaction_id&&<><br/><span style={{ color:"#f59e0b", fontSize:"0.82rem" }}>⚠️ A transação vinculada também será removida.</span></>}
             </p>
-            <div style={{ display:"flex", gap:12, flexDirection: isMobile?"column":"row", justifyContent:"flex-end" }}>
-              <button style={{ ...btnSecondary, width: isMobile?"100%":"auto" }} onClick={() => setDeleteConfirm(null)}>Cancelar</button>
-              <button style={{ background:"#ef4444", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, cursor:"pointer", width: isMobile?"100%":"auto" }} onClick={() => handleDelete(deleteConfirm.id)}>Excluir</button>
+            <div style={{ display:"flex", gap:12, flexDirection:isMobile?"column":"row", justifyContent:"flex-end" }}>
+              <button style={{ ...btnSecondary, width:isMobile?"100%":"auto" }} onClick={()=>setDeleteConfirm(null)}>Cancelar</button>
+              <button style={{ background:"#ef4444", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, cursor:"pointer", width:isMobile?"100%":"auto" }} onClick={()=>handleDelete(deleteConfirm.id)}>Excluir</button>
             </div>
           </div>
         </div>
       )}
 
       {toast && (
-        <div style={{ position:"fixed", bottom: isMobile?16:28, right: isMobile?16:28, left: isMobile?16:"auto", color:"#fff", padding:"14px 24px", borderRadius:12, fontWeight:600, fontSize:"0.9rem", zIndex:9999, boxShadow:"0 8px 30px rgba(0,0,0,0.4)", background: toast.type==="error"?"#ef4444":theme.primaryGrad, textAlign: isMobile?"center":"left", maxWidth: isMobile?"unset":"400px" }}>
+        <div style={{ position:"fixed", bottom:isMobile?16:28, right:isMobile?16:28, left:isMobile?16:"auto", color:"#fff", padding:"14px 24px", borderRadius:12, fontWeight:600, fontSize:"0.9rem", zIndex:9999, boxShadow:"0 8px 30px rgba(0,0,0,0.4)", background:toast.type==="error"?"#ef4444":theme.primaryGrad, textAlign:isMobile?"center":"left", maxWidth:isMobile?"unset":"400px" }}>
           {toast.msg}
         </div>
       )}
