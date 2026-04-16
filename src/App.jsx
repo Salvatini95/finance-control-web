@@ -12,6 +12,7 @@ import Clients      from "./pages/Clients";
 import Sales        from "./pages/Sales";
 import Team         from "./pages/Team";
 import Goals        from "./pages/Goals";
+import ImportExport from "./pages/ImportExport";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -20,7 +21,6 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Login />} />
-
           {/* ✅ rotas públicas para email verification e reset */}
           <Route path="/verify-email"   element={<Login />} />
           <Route path="/reset-password" element={<Login />} />
@@ -64,6 +64,11 @@ function App() {
           <Route path="/team" element={
             <ProtectedRoute roles={["admin"]}>
               <Team />
+            </ProtectedRoute>
+          } />
+          <Route path="/import-export" element={
+            <ProtectedRoute roles={["admin", "financial"]}>
+              <ImportExport />
             </ProtectedRoute>
           } />
         </Routes>
