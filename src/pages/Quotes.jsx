@@ -4,6 +4,7 @@ import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import logoGif from "../assets/video.gif";
 import { useTheme } from "../contexts/ThemeContext";
+import { PRINT_THEMES, buildPrintCSS } from "../utils/printThemes";
 
 const API = "https://finance-control-api-production.up.railway.app/api";
 const token = () => localStorage.getItem("token");
@@ -32,49 +33,6 @@ const STATUS_MAP = {
   approved:  { label:"Aprovado",  color:"#22c55e", bg:"rgba(34,197,94,0.12)"   },
   rejected:  { label:"Recusado",  color:"#ef4444", bg:"rgba(239,68,68,0.12)"   },
   cancelled: { label:"Cancelado", color:"#f59e0b", bg:"rgba(245,158,11,0.12)"  },
-};
-
-const THEMES = {
-  dark: {
-    label:"🌙 Escuro",
-    docBg:"#0a0f1e", docColor:"#e2e8f0", docBorder:"rgba(59,130,246,0.15)",
-    accent:"#3b82f6", accentGrad:"linear-gradient(90deg,#3b82f6,#6366f1,#3b82f6)",
-    logoBg:"rgba(59,130,246,0.08)", logoBorder:"rgba(59,130,246,0.2)", logoColor:"#3b82f6",
-    titleColor:"#fff", clientBg:"rgba(255,255,255,0.02)", clientBorder:"rgba(255,255,255,0.06)",
-    fieldLabel:"#475569", fieldValue:"#e2e8f0", tableBorder:"rgba(59,130,246,0.25)",
-    tableRowEven:"rgba(255,255,255,0.02)", tableNum:"#475569", tableName:"#e2e8f0", tableExtra:"#64748b",
-    totalBg:"rgba(59,130,246,0.05)", totalBorder:"rgba(59,130,246,0.15)",
-    totalDivider:"rgba(59,130,246,0.2)", totalValue:"#e2e8f0", totalFinal:"#3b82f6",
-    condBg:"rgba(255,255,255,0.02)", condBorder:"rgba(255,255,255,0.06)", condText:"#94a3b8",
-    signBorder:"rgba(59,130,246,0.3)", signName:"#3b82f6", signLabel:"#475569",
-    footerBorder:"rgba(255,255,255,0.05)", footerText:"#334155",
-    discountColor:"#ef4444", subtotalColor:"#64748b", valueColor:"#22c55e",
-    pageBg:"#020617", barBg:"rgba(255,255,255,0.03)", barBorder:"rgba(255,255,255,0.07)",
-    backBtn:"rgba(255,255,255,0.08)", backColor:"#fff", backBorder:"rgba(255,255,255,0.1)",
-    glowA:"rgba(59,130,246,0.04)", glowB:"rgba(99,102,241,0.05)",
-    printBtn:"linear-gradient(135deg,#3b82f6,#2563eb)", printShadow:"rgba(59,130,246,0.3)",
-    radioAccent:"#3b82f6", radioActive:"#60a5fa", radioInactive:"#64748b", themeLabel:"#64748b",
-  },
-  light: {
-    label:"☀️ Claro",
-    docBg:"#ffffff", docColor:"#1e293b", docBorder:"rgba(34,197,94,0.2)",
-    accent:"#16a34a", accentGrad:"linear-gradient(90deg,#16a34a,#22c55e,#16a34a)",
-    logoBg:"rgba(34,197,94,0.08)", logoBorder:"rgba(34,197,94,0.25)", logoColor:"#16a34a",
-    titleColor:"#0f172a", clientBg:"#f8fafc", clientBorder:"#e2e8f0",
-    fieldLabel:"#94a3b8", fieldValue:"#1e293b", tableBorder:"rgba(34,197,94,0.3)",
-    tableRowEven:"#f8fafc", tableNum:"#94a3b8", tableName:"#1e293b", tableExtra:"#64748b",
-    totalBg:"rgba(34,197,94,0.05)", totalBorder:"rgba(34,197,94,0.2)",
-    totalDivider:"rgba(34,197,94,0.25)", totalValue:"#1e293b", totalFinal:"#16a34a",
-    condBg:"#f8fafc", condBorder:"#e2e8f0", condText:"#475569",
-    signBorder:"rgba(34,197,94,0.4)", signName:"#16a34a", signLabel:"#94a3b8",
-    footerBorder:"#e2e8f0", footerText:"#94a3b8",
-    discountColor:"#ef4444", subtotalColor:"#64748b", valueColor:"#16a34a",
-    pageBg:"#f1f5f9", barBg:"rgba(0,0,0,0.03)", barBorder:"rgba(0,0,0,0.08)",
-    backBtn:"rgba(0,0,0,0.06)", backColor:"#1e293b", backBorder:"rgba(0,0,0,0.1)",
-    glowA:"rgba(34,197,94,0.05)", glowB:"rgba(22,163,74,0.04)",
-    printBtn:"linear-gradient(135deg,#16a34a,#15803d)", printShadow:"rgba(22,163,74,0.3)",
-    radioAccent:"#16a34a", radioActive:"#16a34a", radioInactive:"#94a3b8", themeLabel:"#475569",
-  }
 };
 
 const EMPTY_FORM = {
@@ -112,7 +70,7 @@ export default function Quotes() {
   const [filterStatus, setFilterStatus]     = useState("all");
   const [search, setSearch]                 = useState("");
   const [printQuote, setPrintQuote]         = useState(null);
-  const [printTheme, setPrintTheme]         = useState("dark");
+  const [printTheme, setPrintTheme]         = useState(themeId || "blue");
   const [companyModal, setCompanyModal]     = useState(false);
   const [companyForm, setCompanyForm]       = useState({});
   const [logoPreview, setLogoPreview]       = useState(null);
@@ -245,7 +203,6 @@ export default function Quotes() {
     });
   }
 
-  // ✅ selectProduct salva SKU
   function selectProduct(idx, productId) {
     const p = products.find(p => String(p.id)===String(productId));
     if (!p) return;
@@ -307,7 +264,134 @@ export default function Quotes() {
   }
 
   function openPrint(q) { setPrintQuote(q); setView("print"); }
-  function handlePrint() { window.print(); }
+
+  // ── IMPRESSÃO via window.open — nunca sai em branco ──────────────
+  function handlePrint() {
+    if (!printQuote) return;
+    const T   = PRINT_THEMES[printTheme] || PRINT_THEMES.blue;
+    const q   = printQuote;
+    const sub = q.subtotal || 0;
+    const disc = q.discount > 0 ? sub * q.discount / 100 : 0;
+
+    const fmtV = v => (v||0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+    const fmtD = d => { if (!d) return "—"; const [y,m,dd] = d.split("-"); return `${dd}/${m}/${y}`; };
+    const STATUS_LABELS = { draft:"Rascunho", sent:"Enviado", approved:"Aprovado", rejected:"Recusado", cancelled:"Cancelado" };
+
+    const logoHtml = company.company_logo
+      ? `<img src="${company.company_logo}" alt="Logo"/>`
+      : `<span class="logo-placeholder">📄<br/>LOGO</span>`;
+
+    const itemRows = (q.items || []).map((item, idx) => `
+      <tr>
+        <td class="muted">${idx + 1}</td>
+        <td>${item.name || "—"}</td>
+        <td class="mono">${item.sku || "—"}</td>
+        <td class="muted">${item.unit || "un"}</td>
+        <td class="muted">${item.qty}</td>
+        <td class="right muted">${fmtV(item.price)}</td>
+        <td class="right income">${fmtV(parseFloat(item.qty||0) * parseFloat(item.price||0))}</td>
+      </tr>
+    `).join("");
+
+    const extraCards = [
+      q.payment_terms ? `<div style="background:${T.cardBg};border:1px solid ${T.cardBorder};border-radius:10px;padding:14px 16px"><div class="section-title" style="margin-bottom:6px">Condições de Pagamento</div><div style="font-size:11px;color:${T.mutedColor};line-height:1.6">${q.payment_terms}</div></div>` : "",
+      q.notes         ? `<div style="background:${T.cardBg};border:1px solid ${T.cardBorder};border-radius:10px;padding:14px 16px"><div class="section-title" style="margin-bottom:6px">Observações</div><div style="font-size:11px;color:${T.mutedColor};line-height:1.6">${q.notes}</div></div>` : "",
+    ].filter(Boolean).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Orçamento ${q.number} — ${q.client_name}</title>
+  <style>${buildPrintCSS(T)}</style>
+</head>
+<body>
+  <div class="doc-wrapper">
+    <div class="accent-bar-top"></div>
+    <div class="glow-a"></div>
+    <div class="glow-b"></div>
+
+    <div class="doc-header">
+      <div style="display:flex;align-items:flex-start;gap:14px">
+        <div class="logo-box">${logoHtml}</div>
+        <div>
+          <div class="company-name">${company.company_name || "Sua Empresa"}</div>
+          <div class="company-meta">
+            ${company.company_cnpj ? `CNPJ: ${company.company_cnpj}<br/>` : ""}
+            ${company.company_address || ""}
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="doc-title">ORÇAMENTO</div>
+        <div class="doc-subtitle">
+          Nº ${q.number}<br/>
+          Emitido em: ${fmtD(q.created_at)}<br/>
+          ${q.valid_until ? `Válido até: ${fmtD(q.valid_until)}<br/>` : ""}
+          Status: ${STATUS_LABELS[q.status] || q.status}
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">Para</div>
+    <div class="info-grid">
+      <div class="info-cell"><div class="label">Nome</div><div class="value">${q.client_name}</div></div>
+      ${q.client_document ? `<div class="info-cell"><div class="label">CPF/CNPJ</div><div class="value">${q.client_document}</div></div>` : ""}
+      ${q.client_email    ? `<div class="info-cell"><div class="label">E-mail</div><div class="value">${q.client_email}</div></div>`    : ""}
+      ${q.client_phone    ? `<div class="info-cell"><div class="label">Telefone</div><div class="value">${q.client_phone}</div></div>`  : ""}
+      ${q.client_address  ? `<div class="info-cell" style="grid-column:1/-1"><div class="label">Endereço</div><div class="value">${q.client_address}</div></div>` : ""}
+    </div>
+
+    <div class="section-title">Itens do Orçamento</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Descrição</th>
+          <th>SKU</th>
+          <th>Unid.</th>
+          <th>Qtd.</th>
+          <th class="right">Preço Unit.</th>
+          <th class="right">Total</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+
+    <div class="totals-box">
+      <div class="totals-inner">
+        <div class="totals-row"><span>Subtotal</span><span>${fmtV(sub)}</span></div>
+        ${q.discount > 0 ? `<div class="totals-row discount"><span>Desconto (${q.discount}%)</span><span>- ${fmtV(disc)}</span></div>` : ""}
+        <div class="totals-row final"><span>TOTAL</span><span>${fmtV(q.total)}</span></div>
+      </div>
+    </div>
+
+    ${extraCards ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">${extraCards}</div>` : ""}
+
+    <div class="sign-row">
+      <div class="sign-box">
+        <div class="sign-line">
+          <div class="sign-name">${company.company_name || "Responsável"}</div>
+          <div class="sign-label">Assinatura</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="doc-footer">
+      SV Finance Control &nbsp;·&nbsp; Gerado em ${new Date().toLocaleDateString("pt-BR")}
+    </div>
+    <div class="accent-bar-bottom"></div>
+  </div>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 600);
+  }
 
   const filteredQuotes = quotes.filter(q => {
     const statusOk = filterStatus==="all" || q.status===filterStatus;
@@ -315,151 +399,78 @@ export default function Quotes() {
     return statusOk && searchOk;
   });
 
-  const glassModal      = isGlass ? { backdropFilter:"blur(18px) saturate(180%)", WebkitBackdropFilter:"blur(18px) saturate(180%)", background:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.6)" } : { background:theme.bgModal, border:`1px solid ${theme.borderCard}` };
-  const btnPrimary      = { background:theme.primaryGrad, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem", boxShadow:`0 4px 15px ${theme.primary}33`, whiteSpace:"nowrap" };
-  const btnSecondary    = { background:isGlass?"rgba(255,255,255,0.3)":theme.bgCard, color:theme.textSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem" };
+  // ── estilos compartilhados ────────────────────────────────────────
+  const glassModal   = isGlass ? { backdropFilter:"blur(18px) saturate(180%)", WebkitBackdropFilter:"blur(18px) saturate(180%)", background:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.6)" } : { background:theme.bgModal, border:`1px solid ${theme.borderCard}` };
+  const btnPrimary   = { background:theme.primaryGrad, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem", boxShadow:`0 4px 15px ${theme.primary}33`, whiteSpace:"nowrap" };
+  const btnSecondary = { background:isGlass?"rgba(255,255,255,0.3)":theme.bgCard, color:theme.textSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", fontSize:"0.9rem" };
   const filterBtn       = { background:isGlass?"rgba(255,255,255,0.2)":theme.bgCard, color:theme.textMuted, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:8, padding:"6px 14px", fontSize:"0.82rem", cursor:"pointer", ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
   const filterBtnActive = { background:isGlass?"rgba(255,255,255,0.45)":`${theme.primary}33`, color:theme.primary, border:`1px solid ${isGlass?"rgba(255,255,255,0.7)":`${theme.primary}66`}` };
-  const th              = { textAlign:"left", padding:"12px 16px", color:theme.textMuted, fontWeight:600, fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", background:isGlass?"rgba(255,255,255,0.1)":theme.bgCard, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}`, whiteSpace:"nowrap" };
-  const td              = { padding:"12px 16px", verticalAlign:"middle" };
-  const btnAction       = { background:isGlass?"rgba(255,255,255,0.25)":theme.bgCard, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" };
-  const emptyState      = { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"60px 0", gap:12, color:theme.textMuted };
-  const overlay         = { position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" };
-  const btnClose        = { background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:32, height:32, borderRadius:8, cursor:"pointer", fontSize:14 };
-  const fieldStyle      = { display:"flex", flexDirection:"column", gap:6 };
-  const labelStyle      = { color:theme.textSecondary, fontSize:"0.8rem", fontWeight:600 };
-  const inputStyle      = { background:theme.bgInput, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:10, padding:"10px 14px", color:theme.textPrimary, fontSize:"0.9rem", outline:"none", width:"100%", boxSizing:"border-box", transition:"border-color 0.2s", colorScheme, ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
-  const selectStyle     = { background:isGlass?"rgba(255,255,255,0.3)":theme.bgSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"10px 14px", color:theme.textPrimary, fontSize:"0.9rem", outline:"none", width:"100%", boxSizing:"border-box", colorScheme, cursor:"pointer", ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
-  const sectionLabel    = { fontSize:"11px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:theme.textMuted, margin:"0 0 14px 2px", display:"flex", alignItems:"center", gap:8 };
-  const formCard        = { background:isGlass?"rgba(255,255,255,0.2)":theme.bgCard, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:14, padding:24, ...(isGlass&&{backdropFilter:"blur(18px) saturate(180%)",WebkitBackdropFilter:"blur(18px) saturate(180%)"}) };
-  const toastStyle      = { position:"fixed", bottom:28, color:"#fff", padding:"12px 22px", borderRadius:12, fontWeight:600, fontSize:"0.9rem", zIndex:9999, boxShadow:"0 8px 30px rgba(0,0,0,0.4)", maxWidth:"400px" };
+  const th           = { textAlign:"left", padding:"12px 16px", color:theme.textMuted, fontWeight:600, fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", background:isGlass?"rgba(255,255,255,0.1)":theme.bgCard, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}`, whiteSpace:"nowrap" };
+  const td           = { padding:"12px 16px", verticalAlign:"middle" };
+  const btnAction    = { background:isGlass?"rgba(255,255,255,0.25)":theme.bgCard, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:"0.9rem" };
+  const emptyState   = { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"60px 0", gap:12, color:theme.textMuted };
+  const overlay      = { position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, backdropFilter:"blur(4px)" };
+  const btnClose     = { background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:32, height:32, borderRadius:8, cursor:"pointer", fontSize:14 };
+  const fieldStyle   = { display:"flex", flexDirection:"column", gap:6 };
+  const labelStyle   = { color:theme.textSecondary, fontSize:"0.8rem", fontWeight:600 };
+  const inputStyle   = { background:theme.bgInput, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:10, padding:"10px 14px", color:theme.textPrimary, fontSize:"0.9rem", outline:"none", width:"100%", boxSizing:"border-box", transition:"border-color 0.2s", colorScheme, ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
+  const selectStyle  = { background:isGlass?"rgba(255,255,255,0.3)":theme.bgSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"10px 14px", color:theme.textPrimary, fontSize:"0.9rem", outline:"none", width:"100%", boxSizing:"border-box", colorScheme, cursor:"pointer", ...(isGlass&&{backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}) };
+  const sectionLabel = { fontSize:"11px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:theme.textMuted, margin:"0 0 14px 2px", display:"flex", alignItems:"center", gap:8 };
+  const formCard     = { background:isGlass?"rgba(255,255,255,0.2)":theme.bgCard, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}`, borderRadius:14, padding:24, ...(isGlass&&{backdropFilter:"blur(18px) saturate(180%)",WebkitBackdropFilter:"blur(18px) saturate(180%)"}) };
+  const toastStyle   = { position:"fixed", bottom:28, color:"#fff", padding:"12px 22px", borderRadius:12, fontWeight:600, fontSize:"0.9rem", zIndex:9999, boxShadow:"0 8px 30px rgba(0,0,0,0.4)", maxWidth:"400px" };
 
   if (loading) return <h2 style={{ color:theme.textPrimary, padding:20 }}>Carregando...</h2>;
 
   // ══════════════════════════════
   // VIEW: IMPRESSÃO
   // ══════════════════════════════
-  if (view==="print" && printQuote) {
-    const q   = printQuote;
-    const sub  = q.subtotal || 0;
-    const disc = q.discount > 0 ? sub * q.discount / 100 : 0;
-    const T    = THEMES[printTheme];
+  if (view === "print" && printQuote) {
+    const T = PRINT_THEMES[printTheme] || PRINT_THEMES.blue;
     return (
-      <div style={{ background:T.pageBg, minHeight:"100vh" }}>
-        <style>{`@media print { .no-print { display:none !important; } body { background:${T.docBg} !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; } } body { margin:0; font-family:'Inter','Segoe UI',sans-serif; }`}</style>
-        <div className="no-print" style={{ background:T.barBg, backdropFilter:"blur(10px)", borderBottom:`1px solid ${T.barBorder}`, padding:"12px 24px", display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
-          <button onClick={() => setView("list")} style={{ background:T.backBtn, color:T.backColor, border:`1px solid ${T.backBorder}`, borderRadius:8, padding:"8px 16px", cursor:"pointer", fontWeight:600, fontSize:"0.88rem" }}>← Voltar</button>
-          <div style={{ display:"flex", alignItems:"center", gap:16, background:printTheme==="dark"?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.04)", border:printTheme==="dark"?"1px solid rgba(255,255,255,0.08)":"1px solid rgba(0,0,0,0.1)", borderRadius:10, padding:"8px 16px" }}>
-            <span style={{ fontSize:11, fontWeight:700, color:T.themeLabel, textTransform:"uppercase", letterSpacing:"0.08em" }}>Tema:</span>
-            {Object.entries(THEMES).map(([key,t]) => (
-              <label key={key} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
-                <input type="radio" name="printTheme" value={key} checked={printTheme===key} onChange={() => setPrintTheme(key)} style={{ accentColor:key==="dark"?"#3b82f6":"#16a34a", cursor:"pointer" }} />
-                <span style={{ fontSize:13, fontWeight:600, color:printTheme===key?(key==="dark"?"#60a5fa":"#16a34a"):T.themeLabel }}>{t.label}</span>
-              </label>
+      <div style={{ background:T.pageBg, minHeight:"100vh", display:"flex", flexDirection:"column" }}>
+        {/* Barra de controle */}
+        <div style={{ background:T.barBg, borderBottom:`1px solid ${T.barBorder}`, padding:"12px 24px", display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
+          <button onClick={() => setView("list")} style={{ background:T.backBtn, color:T.backColor, border:`1px solid rgba(255,255,255,0.12)`, borderRadius:8, padding:"8px 16px", cursor:"pointer", fontWeight:600, fontSize:"0.88rem" }}>
+            ← Voltar
+          </button>
+
+          {/* Seletor de tema */}
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.08em" }}>Tema PDF:</span>
+            {Object.values(PRINT_THEMES).map(t => (
+              <button key={t.id} onClick={() => setPrintTheme(t.id)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${printTheme===t.id?"#3b82f6":"rgba(255,255,255,0.15)"}`, background:printTheme===t.id?"rgba(59,130,246,0.2)":"transparent", color:printTheme===t.id?"#60a5fa":"#94a3b8", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}>
+                {t.label}
+              </button>
             ))}
           </div>
-          <button onClick={handlePrint} style={{ background:T.printBtn, color:"#fff", border:"none", borderRadius:8, padding:"8px 16px", cursor:"pointer", fontWeight:600, fontSize:"0.88rem", boxShadow:`0 4px 15px ${T.printShadow}` }}>🖨️ Imprimir / Salvar PDF</button>
+
+          <button onClick={handlePrint} style={{ background:T.printBtn, color:"#fff", border:"none", borderRadius:8, padding:"8px 18px", cursor:"pointer", fontWeight:700, fontSize:"0.9rem", boxShadow:`0 4px 15px ${T.printShadow}`, marginLeft:"auto" }}>
+            🖨️ Imprimir / Salvar PDF
+          </button>
         </div>
 
-        <div style={{ background:T.docBg, color:T.docColor, maxWidth:860, margin:"24px auto", padding:isMobile?"28px 20px":"52px 56px", boxShadow:printTheme==="dark"?"0 8px 48px rgba(0,0,0,0.8)":"0 8px 48px rgba(0,0,0,0.12)", borderRadius:16, border:`1px solid ${T.docBorder}`, position:"relative", overflow:"hidden" }}>
-          <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:T.accentGrad }} />
-          <div style={{ position:"absolute", top:20, right:40, width:120, height:120, borderRadius:"50%", background:T.glowA, filter:"blur(30px)", pointerEvents:"none" }} />
-          <div style={{ position:"absolute", bottom:40, left:20, width:80, height:80, borderRadius:"50%", background:T.glowB, filter:"blur(20px)", pointerEvents:"none" }} />
-
-          {/* cabeçalho */}
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:40, flexWrap:isMobile?"wrap":"nowrap", gap:24 }}>
-            <div style={{ display:"flex", alignItems:"flex-start", gap:16 }}>
-              <div style={{ width:isMobile?56:72, height:isMobile?56:72, borderRadius:12, background:T.logoBg, border:`1px solid ${T.logoBorder}`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", flexShrink:0 }}>
-                {company.company_logo ? <img src={company.company_logo} alt="logo" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }} /> : <span style={{ color:T.logoColor, fontSize:"0.65rem", fontWeight:700, textAlign:"center", padding:4, lineHeight:1.3 }}>LOGO</span>}
-              </div>
-              <div>
-                <div style={{ fontSize:isMobile?"1rem":"1.15rem", fontWeight:700, color:T.titleColor, marginBottom:4 }}>{company.company_name||"Sua Empresa"}</div>
-                {company.company_cnpj    && <div style={{ fontSize:12, color:T.fieldLabel }}>CNPJ: {company.company_cnpj}</div>}
-                {company.company_address && <div style={{ fontSize:12, color:T.fieldLabel }}>{company.company_address}</div>}
-              </div>
+        {/* Preview resumido */}
+        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
+          <div style={{ background:T.cardBg, border:`1px solid ${T.accentBorder}`, borderRadius:20, padding:"40px 48px", textAlign:"center", maxWidth:420 }}>
+            <div style={{ fontSize:"3.5rem", marginBottom:16 }}>🖨️</div>
+            <div style={{ color:T.titleColor, fontWeight:800, fontSize:18, marginBottom:8 }}>
+              Orçamento {printQuote.number}
             </div>
-            <div style={{ textAlign:isMobile?"left":"right" }}>
-              <div style={{ fontSize:isMobile?"1.3rem":"1.8rem", fontWeight:800, color:T.accent, letterSpacing:"1px", marginBottom:4 }}>ORÇAMENTO</div>
-              <div style={{ fontSize:13, color:T.fieldLabel, marginBottom:2 }}>Nº {q.number}</div>
-              <div style={{ fontSize:12, color:T.fieldLabel }}>Emitido em: {fmtDate(q.created_at)}</div>
-              {q.valid_until && <div style={{ fontSize:12, color:T.fieldLabel }}>Válido até: {fmtDate(q.valid_until)}</div>}
-              <div style={{ display:"inline-block", marginTop:8, padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:700, background:STATUS_MAP[q.status]?.bg, color:STATUS_MAP[q.status]?.color, border:`1px solid ${STATUS_MAP[q.status]?.color}33` }}>{STATUS_MAP[q.status]?.label}</div>
+            <div style={{ color:T.mutedColor, fontSize:13, marginBottom:6 }}>{printQuote.client_name}</div>
+            <div style={{ color:T.accent, fontWeight:800, fontSize:22, marginBottom:20 }}>
+              {(printQuote.total||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
+            </div>
+            <div style={{ color:T.mutedColor, fontSize:12, lineHeight:1.7 }}>
+              Selecione o tema acima e clique em<br/>
+              <strong style={{ color:T.titleColor }}>🖨️ Imprimir / Salvar PDF</strong><br/>
+              para abrir o documento completo
+            </div>
+            <div style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, fontSize:11, color:T.mutedColor, textAlign:"left", background:T.accentLight, border:`1px solid ${T.accentBorder}`, borderRadius:10, padding:"12px 16px" }}>
+              <div>📄 {(printQuote.items||[]).length} item(ns) no orçamento</div>
+              {printQuote.discount > 0 && <div>🏷️ Desconto de {printQuote.discount}% aplicado</div>}
+              {printQuote.valid_until && <div>📅 Válido até {fmtDate(printQuote.valid_until)}</div>}
             </div>
           </div>
-
-          <div style={{ height:1, background:`linear-gradient(90deg,transparent,${T.accent}66,transparent)`, marginBottom:32 }} />
-
-          {/* cliente */}
-          <div style={{ marginBottom:32 }}>
-            <div style={{ fontSize:10, fontWeight:700, letterSpacing:"0.15em", textTransform:"uppercase", color:T.accent, marginBottom:12 }}>PARA:</div>
-            <div style={{ background:T.clientBg, border:`1px solid ${T.clientBorder}`, borderRadius:12, padding:"16px 20px", display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:"10px 24px" }}>
-              <div><div style={{ fontSize:10, color:T.fieldLabel, textTransform:"uppercase", letterSpacing:"0.05em" }}>Nome</div><div style={{ fontSize:14, fontWeight:600, color:T.fieldValue, marginTop:2 }}>{q.client_name}</div></div>
-              {q.client_document && <div><div style={{ fontSize:10, color:T.fieldLabel, textTransform:"uppercase", letterSpacing:"0.05em" }}>CPF/CNPJ</div><div style={{ fontSize:14, color:T.fieldValue, marginTop:2 }}>{q.client_document}</div></div>}
-              {q.client_email    && <div><div style={{ fontSize:10, color:T.fieldLabel, textTransform:"uppercase", letterSpacing:"0.05em" }}>E-mail</div><div style={{ fontSize:14, color:T.fieldValue, marginTop:2 }}>{q.client_email}</div></div>}
-              {q.client_phone    && <div><div style={{ fontSize:10, color:T.fieldLabel, textTransform:"uppercase", letterSpacing:"0.05em" }}>Telefone</div><div style={{ fontSize:14, color:T.fieldValue, marginTop:2 }}>{q.client_phone}</div></div>}
-              {q.client_address  && <div style={{ gridColumn:"1 / -1" }}><div style={{ fontSize:10, color:T.fieldLabel, textTransform:"uppercase", letterSpacing:"0.05em" }}>Endereço</div><div style={{ fontSize:14, color:T.fieldValue, marginTop:2 }}>{q.client_address}</div></div>}
-            </div>
-          </div>
-
-          {/* ✅ TABELA DE ITENS COM SKU */}
-          <div style={{ marginBottom:32 }}>
-            <div style={{ fontSize:10, fontWeight:700, letterSpacing:"0.15em", textTransform:"uppercase", color:T.accent, marginBottom:12 }}>ITENS DO ORÇAMENTO</div>
-            <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", minWidth:isMobile?"560px":"unset" }}>
-                <thead>
-                  <tr style={{ borderBottom:`1px solid ${T.tableBorder}` }}>
-                    {["#","Descrição","SKU","Unid.","Qtd.","Preço Unit.","Total"].map(h => (
-                      <th key={h} style={{ textAlign:h==="Total"||h==="Preço Unit."?"right":"left", padding:"10px 12px", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:T.accent }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(q.items||[]).map((item,idx) => (
-                    <tr key={idx} style={{ borderBottom:`1px solid ${T.clientBorder}`, background:idx%2===0?T.tableRowEven:"transparent" }}>
-                      <td style={{ padding:"12px", color:T.tableNum, fontSize:12 }}>{idx+1}</td>
-                      <td style={{ padding:"12px", fontWeight:500, color:T.tableName }}>{item.name}</td>
-                      {/* ✅ coluna SKU */}
-                      <td style={{ padding:"12px", color:T.tableExtra, fontSize:11, fontFamily:"monospace" }}>{item.sku||"—"}</td>
-                      <td style={{ padding:"12px", color:T.tableExtra, fontSize:13 }}>{item.unit}</td>
-                      <td style={{ padding:"12px", color:T.tableExtra, fontSize:13 }}>{item.qty}</td>
-                      <td style={{ padding:"12px", textAlign:"right", color:T.tableExtra, fontSize:13 }}>{fmt(item.price)}</td>
-                      <td style={{ padding:"12px", textAlign:"right", fontWeight:700, color:T.valueColor }}>{fmt(parseFloat(item.qty)*parseFloat(item.price))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* totais */}
-          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:32 }}>
-            <div style={{ background:T.totalBg, border:`1px solid ${T.totalBorder}`, borderRadius:12, padding:"20px 24px", minWidth:isMobile?"100%":"280px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, color:T.subtotalColor, fontSize:14 }}><span>Subtotal</span><span style={{ color:T.totalValue }}>{fmt(sub)}</span></div>
-              {q.discount>0 && <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, color:T.discountColor, fontSize:14 }}><span>Desconto ({q.discount}%)</span><span>- {fmt(disc)}</span></div>}
-              <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${T.totalDivider}`, paddingTop:12, marginTop:8, fontSize:isMobile?"1rem":"1.2rem", fontWeight:800, color:T.totalFinal }}><span>TOTAL</span><span>{fmt(q.total)}</span></div>
-            </div>
-          </div>
-
-          {/* condições e observações */}
-          {(q.payment_terms||q.notes) && (
-            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:32 }}>
-              {q.payment_terms && <div style={{ background:T.condBg, border:`1px solid ${T.condBorder}`, borderRadius:12, padding:"16px 20px" }}><div style={{ fontSize:10, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:T.accent, marginBottom:8 }}>CONDIÇÕES DE PAGAMENTO</div><div style={{ fontSize:13, color:T.condText, lineHeight:1.6 }}>{q.payment_terms}</div></div>}
-              {q.notes         && <div style={{ background:T.condBg, border:`1px solid ${T.condBorder}`, borderRadius:12, padding:"16px 20px" }}><div style={{ fontSize:10, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:T.accent, marginBottom:8 }}>OBSERVAÇÕES</div><div style={{ fontSize:13, color:T.condText, lineHeight:1.6 }}>{q.notes}</div></div>}
-            </div>
-          )}
-
-          {/* assinatura */}
-          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:40 }}>
-            <div style={{ textAlign:"center", minWidth:200 }}>
-              <div style={{ borderTop:`1px solid ${T.signBorder}`, paddingTop:8, marginTop:40 }}>
-                <div style={{ fontSize:"1rem", color:T.signName, fontWeight:600 }}>{company.company_name||"Responsável"}</div>
-                <div style={{ fontSize:11, color:T.signLabel, marginTop:2 }}>Assinatura</div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ borderTop:`1px solid ${T.footerBorder}`, paddingTop:16, textAlign:"center", fontSize:11, color:T.footerText }}>Documento gerado pelo Finance Control — {new Date().toLocaleDateString("pt-BR")}</div>
-          <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3, background:T.accentGrad }} />
         </div>
       </div>
     );
@@ -566,11 +577,8 @@ export default function Quotes() {
                           ))}
                         </select>
                         <input style={{ ...inputStyle, fontSize:"0.8rem" }} placeholder="Ou descreva manualmente" value={item.name} onChange={e => updateItem(idx,"name",e.target.value)} />
-                        {/* ✅ SKU exibido abaixo do nome */}
                         {item.sku && (
-                          <div style={{ fontSize:"0.72rem", color:theme.textMuted, paddingLeft:4, marginTop:4, fontFamily:"monospace" }}>
-                            SKU: {item.sku}
-                          </div>
+                          <div style={{ fontSize:"0.72rem", color:theme.textMuted, paddingLeft:4, marginTop:4, fontFamily:"monospace" }}>SKU: {item.sku}</div>
                         )}
                       </div>
                       <div style={{ flex:1 }}>{isMobile&&<label style={labelStyle}>Unid.</label>}<input style={inputStyle} value={item.unit} onChange={e => updateItem(idx,"unit",e.target.value)} /></div>
@@ -667,10 +675,10 @@ export default function Quotes() {
 
         <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)", gap:16, marginBottom:28 }}>
           {[
-            { icon:"📋", label:"Total",          value:quotes.length,                                                              color:theme.primary, border:isGlass?"rgba(255,255,255,0.5)":`${theme.primary}33` },
-            { icon:"✅", label:"Aprovados",      value:quotes.filter(q=>q.status==="approved").length,                            color:"#22c55e",     border:isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.2)"  },
-            { icon:"⏳", label:"Pendentes",      value:quotes.filter(q=>q.status==="draft"||q.status==="sent").length,            color:"#f59e0b",     border:isGlass?"rgba(255,255,255,0.5)":"rgba(245,158,11,0.2)" },
-            { icon:"💰", label:"Total Aprovado", value:fmt(quotes.filter(q=>q.status==="approved").reduce((s,q)=>s+q.total,0)),   color:"#22c55e",     border:isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.2)"  },
+            { icon:"📋", label:"Total",          value:quotes.length,                                                            color:theme.primary, border:isGlass?"rgba(255,255,255,0.5)":`${theme.primary}33` },
+            { icon:"✅", label:"Aprovados",      value:quotes.filter(q=>q.status==="approved").length,                          color:"#22c55e",     border:isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.2)"  },
+            { icon:"⏳", label:"Pendentes",      value:quotes.filter(q=>q.status==="draft"||q.status==="sent").length,          color:"#f59e0b",     border:isGlass?"rgba(255,255,255,0.5)":"rgba(245,158,11,0.2)" },
+            { icon:"💰", label:"Total Aprovado", value:fmt(quotes.filter(q=>q.status==="approved").reduce((s,q)=>s+q.total,0)), color:"#22c55e",     border:isGlass?"rgba(255,255,255,0.5)":"rgba(34,197,94,0.2)"  },
           ].map((c,i) => (
             <div key={i} className="card3d-q" style={{ border:`1px solid ${c.border}` }}>
               <div style={{ fontSize:"1.5rem" }}>{c.icon}</div>
