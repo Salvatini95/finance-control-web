@@ -33,7 +33,13 @@ const BUSINESS_CATEGORIES = {
   income:  ["Vendas","Serviços Prestados","Consultoria","Outros"],
 };
 
-// ✅ helpers de data para recorrência
+const STATUS_MAP_ORDER = {
+  open:        { label: "Aberta",       color: "#3b82f6", bg: "rgba(59,130,246,0.12)"  },
+  in_progress: { label: "Em andamento", color: "#f59e0b", bg: "rgba(245,158,11,0.12)"  },
+  done:        { label: "Concluída",    color: "#22c55e", bg: "rgba(34,197,94,0.12)"   },
+  cancelled:   { label: "Cancelada",    color: "#ef4444", bg: "rgba(239,68,68,0.12)"   },
+};
+
 function addMonths(dateStr, n) {
   const [y, m, d] = dateStr.split("-").map(Number);
   const dt = new Date(y, m - 1 + n, d);
@@ -49,6 +55,12 @@ function addYears(dateStr, n) {
   return `${y + n}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 }
 
+function fmtDate(d) {
+  if (!d) return "—";
+  const [y,m,dd] = d.split("-");
+  return `${dd}/${m}/${y}`;
+}
+
 export default function Transactions() {
   const { theme, themeId } = useTheme();
   const isGlass     = themeId === "glass";
@@ -58,6 +70,8 @@ export default function Transactions() {
 
   const accountType = localStorage.getItem("account_type") || "business";
   const isPersonal  = accountType === "personal";
+  const role        = localStorage.getItem("role") || "viewer";
+  const isAdmin     = role === "admin";
   const token       = localStorage.getItem("token");
 
   const CATEGORIES = isPersonal ? PERSONAL_CATEGORIES : BUSINESS_CATEGORIES;
@@ -79,12 +93,14 @@ export default function Transactions() {
   const [showForm, setShowForm]     = useState(false);
   const [newForm, setNewForm]       = useState({ description:"", amount:"", type:"income", category:"", date:"" });
   const [toast, setToast]           = useState(null);
+  const [orderModal, setOrderModal] = useState(null); // order completa para modal arquivo
+  const [loadingOrder, setLoadingOrder] = useState(false);
 
-  // ✅ estados de recorrência
-  const [recurring, setRecurring]               = useState(false);
-  const [recurringFreq, setRecurringFreq]       = useState("monthly");
-  const [recurringQty, setRecurringQty]         = useState(3);
-  const [savingRecurring, setSavingRecurring]   = useState(false);
+  // recorrência
+  const [recurring, setRecurring]             = useState(false);
+  const [recurringFreq, setRecurringFreq]     = useState("monthly");
+  const [recurringQty, setRecurringQty]       = useState(3);
+  const [savingRecurring, setSavingRecurring] = useState(false);
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -104,6 +120,17 @@ export default function Transactions() {
       setTransactions(list); setFiltered(list);
     } catch { setTransactions([]); setFiltered([]); }
     setLoading(false);
+  };
+
+  // Busca a order completa para abrir o modal arquivo
+  const fetchOrderDetail = async (orderId) => {
+    setLoadingOrder(true);
+    try {
+      const res  = await fetch(`${API_URL}/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      setOrderModal(data);
+    } catch { showToast("Erro ao carregar pedido", "error"); }
+    finally { setLoadingOrder(false); }
   };
 
   useEffect(() => { fetchTransactions(); }, []);
@@ -129,7 +156,6 @@ export default function Transactions() {
   const years         = [...new Set(transactions.map(t => t.date?.substring(0, 4)).filter(Boolean))].sort().reverse();
   const allCategories = [...new Set(transactions.map(t => t.category).filter(Boolean))].sort();
 
-  // ✅ submit com suporte a recorrência
   const handleNewSubmit = async (e) => {
     if (e?.preventDefault) e.preventDefault();
     if (!newForm.description || !newForm.amount || !newForm.date) {
@@ -207,7 +233,10 @@ export default function Transactions() {
   };
 
   const openEdit = (t) => {
-    if (!isPersonal && t.source !== "manual") { showToast("Transações automáticas não podem ser editadas.", "error"); return; }
+    // Admin pode editar qualquer; outros só manual
+    if (!isAdmin && !isPersonal && t.source !== "manual") {
+      showToast("Apenas admins podem editar transações automáticas.", "error"); return;
+    }
     setEditingTransaction(t);
     setEditForm({ description:t.description, amount:t.amount, type:t.type, category:t.category||"", date:t.date||"" });
   };
@@ -239,8 +268,7 @@ export default function Transactions() {
   const totalBills   = transactions.filter(t => t.source==="bill").reduce((a,b)=>a+b.amount,0);
   const totalManual  = transactions.filter(t => t.source==="manual").reduce((a,b)=>a+b.amount,0);
 
-  const fmt     = (v) => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
-  const fmtDate = (d) => { if (!d) return "-"; const [y,m,day]=d.split("-"); return `${day}/${m}/${y}`; };
+  const fmt = (v) => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
 
   function sourceLabel(source) {
     return { manual:"✏️ Manual", sale:"🛒 Venda", bill:"📄 Conta" }[source] || source;
@@ -248,6 +276,9 @@ export default function Transactions() {
   function sourceBadgeStyle(source) {
     return { manual:{ bg:"rgba(148,163,184,0.15)", color:"#94a3b8" }, sale:{ bg:"rgba(34,197,94,0.15)", color:"#22c55e" }, bill:{ bg:"rgba(59,130,246,0.15)", color:"#3b82f6" } }[source] || { bg:"rgba(148,163,184,0.15)", color:"#94a3b8" };
   }
+
+  // ── determina se o usuário pode editar/deletar esta transação ──
+  const canEditTransaction = (t) => isAdmin || isPersonal || t.source === "manual";
 
   const inputStyle = {
     background:theme.bgInput, color:theme.textPrimary,
@@ -262,7 +293,7 @@ export default function Transactions() {
     fontSize:"14px", outline:"none", width:"100%", boxSizing:"border-box", colorScheme,
     ...(isGlass && { backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)" }),
   };
-  const saveBtn = { background:theme.primaryGrad, border:"none", color:"white", padding:"10px 24px", borderRadius:"8px", cursor:"pointer", fontSize:"14px", fontWeight:"600" };
+  const saveBtn    = { background:theme.primaryGrad, border:"none", color:"white", padding:"10px 24px", borderRadius:"8px", cursor:"pointer", fontSize:"14px", fontWeight:"600" };
   const glassModal = isGlass
     ? { backdropFilter:"blur(18px) saturate(180%)", WebkitBackdropFilter:"blur(18px) saturate(180%)", background:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.6)" }
     : { background:theme.bgModal, border:`1px solid ${theme.borderCard}` };
@@ -290,6 +321,8 @@ export default function Transactions() {
         .table3d { background:${isGlass?"rgba(255,255,255,0.18)":theme.bgCard}; border:1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}; border-radius:16px; overflow-x:auto; -webkit-overflow-scrolling:touch; box-shadow:${isGlass?"0 4px 24px rgba(0,0,0,0.07)":"0 12px 32px rgba(0,0,0,0.4)"}; backdrop-filter:${isGlass?"blur(18px) saturate(180%)":"blur(6px)"}; -webkit-backdrop-filter:${isGlass?"blur(18px) saturate(180%)":"blur(6px)"}; }
         .form3d { background:${isGlass?"rgba(255,255,255,0.2)":theme.bgCard}; border:1px solid ${isGlass?"rgba(255,255,255,0.4)":theme.borderCard}; border-radius:16px; padding:24px; margin-bottom:24px; box-shadow:${isGlass?"0 4px 24px rgba(0,0,0,0.06)":"0 12px 32px rgba(0,0,0,0.4)"}; backdrop-filter:${isGlass?"blur(18px) saturate(180%)":"blur(6px)"}; -webkit-backdrop-filter:${isGlass?"blur(18px) saturate(180%)":"blur(6px)"}; }
         .tr-hover:hover { background:${isGlass?"rgba(255,255,255,0.15)":`${theme.primary}11`} !important; }
+        .order-link { cursor:pointer; text-decoration:underline; text-underline-offset:3px; text-decoration-style:dotted; font-weight:700; transition:opacity 0.15s; }
+        .order-link:hover { opacity:0.7; }
         @media (max-width:768px) { .card3d-t { transform:none !important; } .card3d-t:hover { transform:translateY(-4px) !important; } }
       `}</style>
 
@@ -311,12 +344,11 @@ export default function Transactions() {
           </button>
         </div>
 
-        {/* ✅ FORMULÁRIO COM RECORRÊNCIA */}
+        {/* FORMULÁRIO COM RECORRÊNCIA */}
         {showForm && (
           <div className="form3d">
             <h3 style={{ fontSize:"16px", fontWeight:"600", margin:"0 0 20px 0", color:theme.textPrimary }}>➕ Nova Transação</h3>
 
-            {/* seletor visual tipo PF */}
             {isPersonal && (
               <div style={{ display:"flex", gap:10, marginBottom:20 }}>
                 {[{ v:"expense", label:"💸 Saída", color:theme.expense }, { v:"income", label:"💚 Entrada", color:theme.income }].map(opt => (
@@ -328,7 +360,6 @@ export default function Transactions() {
               </div>
             )}
 
-            {/* campos principais */}
             <div style={isMobile ? { display:"flex", flexDirection:"column", gap:14 } : { display:"grid", gridTemplateColumns:isPersonal?"1fr 1fr 1fr 1fr":"2fr 1fr 1fr 1fr 1fr", gap:"16px", alignItems:"start" }}>
               <div style={fieldGroup}>
                 <label style={{ ...modalLabel, color:theme.textSecondary }}>Descrição</label>
@@ -360,9 +391,8 @@ export default function Transactions() {
               </div>
             </div>
 
-            {/* ✅ BLOCO RECORRÊNCIA */}
+            {/* RECORRÊNCIA */}
             <div style={{ marginTop:20, padding:"16px 20px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgPrimary, borderRadius:12, border:`1px solid ${recurring?`${theme.primary}44`:isGlass?"rgba(255,255,255,0.3)":theme.border}`, transition:"border-color 0.2s" }}>
-              {/* toggle */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }} onClick={() => setRecurring(!recurring)}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <span style={{ fontSize:"1.1rem" }}>🔁</span>
@@ -375,8 +405,6 @@ export default function Transactions() {
                   <div style={{ position:"absolute", top:3, left:recurring?22:3, width:18, height:18, borderRadius:"50%", background:"white", transition:"left 0.2s", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }} />
                 </div>
               </div>
-
-              {/* opções */}
               {recurring && (
                 <div style={{ marginTop:16, display:"flex", gap:12, flexWrap:"wrap", alignItems:"flex-end" }}>
                   <div style={fieldGroup}>
@@ -395,7 +423,6 @@ export default function Transactions() {
                       {recurringFreq === "yearly"  && [2,3,4,5].map(n => <option key={n} value={n}>{n}x ({n} anos)</option>)}
                     </select>
                   </div>
-                  {/* preview datas */}
                   {newForm.date && (
                     <div style={{ padding:"10px 14px", background:isGlass?"rgba(255,255,255,0.2)":`${theme.primary}11`, borderRadius:10, border:`1px solid ${theme.primary}33`, fontSize:12, color:theme.textMuted, flex:1, minWidth:180 }}>
                       <div style={{ fontWeight:600, color:theme.primary, marginBottom:6 }}>📋 Preview das datas:</div>
@@ -414,7 +441,6 @@ export default function Transactions() {
               )}
             </div>
 
-            {/* botões */}
             <div style={{ display:"flex", justifyContent:"flex-end", gap:12, marginTop:16, flexDirection:isMobile?"column":"row" }}>
               <button type="button" onClick={() => { setShowForm(false); setRecurring(false); }}
                 style={{ background:isGlass?"rgba(255,255,255,0.3)":theme.bgCard, color:theme.textSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"10px 20px", fontWeight:600, cursor:"pointer", width:isMobile?"100%":"auto" }}>
@@ -450,7 +476,7 @@ export default function Transactions() {
           </div>
         </div>
 
-        {/* MINI CARDS ORIGEM — só business */}
+        {/* MINI CARDS ORIGEM */}
         {!isPersonal && !isMobile && (
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:24 }}>
             {[
@@ -469,7 +495,7 @@ export default function Transactions() {
           </div>
         )}
 
-        {/* FILTRO POR ORIGEM — só business */}
+        {/* FILTRO ORIGEM */}
         {!isPersonal && (
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
             <span style={{ color:theme.textMuted, fontSize:"0.82rem", fontWeight:600, alignSelf:"center", marginRight:4 }}>Origem:</span>
@@ -540,12 +566,24 @@ export default function Transactions() {
               </thead>
               <tbody>
                 {filtered.map(t => {
-                  const isManual = isPersonal || t.source === "manual";
-                  const badge    = sourceBadgeStyle(t.source);
+                  const canEdit = canEditTransaction(t);
+                  const badge   = sourceBadgeStyle(t.source);
                   return (
                     <tr key={t.id} className="tr-hover" style={{ background:"transparent" }}>
                       <td style={{ ...tdStyle, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.2)":theme.border}`, color:theme.textSecondary }}>{fmtDate(t.date)}</td>
-                      <td style={{ ...tdStyle, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.2)":theme.border}`, color:theme.textPrimary, maxWidth:isMobile?"120px":"none", overflow:"hidden", textOverflow:"ellipsis" }}>{t.description}</td>
+                      <td style={{ ...tdStyle, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.2)":theme.border}`, color:theme.textPrimary, maxWidth:isMobile?"120px":"none", overflow:"hidden", textOverflow:"ellipsis" }}>
+                        <div>{t.description}</div>
+                        {/* ✅ link clicável para pedido/OS se tiver order_number */}
+                        {t.order_number && (
+                          <div
+                            className="order-link"
+                            style={{ fontSize:"11px", color:"#22c55e", marginTop:3 }}
+                            onClick={() => fetchOrderDetail(t.order_id)}
+                          >
+                            {t.order_number.startsWith("OS-") ? "⚙️" : "📦"} {t.order_number} — ver pedido
+                          </div>
+                        )}
+                      </td>
                       {!isMobile && (
                         <td style={{ ...tdStyle, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.2)":theme.border}` }}>
                           <span style={{ background:isGlass?"rgba(255,255,255,0.3)":theme.bgCardHover, padding:"3px 10px", borderRadius:"20px", fontSize:"12px", color:theme.textSecondary }}>{t.category||"—"}</span>
@@ -566,12 +604,12 @@ export default function Transactions() {
                       )}
                       <td style={{ ...tdStyle, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.2)":theme.border}`, textAlign:"center" }}>
                         <div style={{ display:"flex", gap:6, justifyContent:"center" }}>
-                          <button onClick={() => openEdit(t)} title="Editar"
-                            style={{ background:isGlass?"rgba(255,255,255,0.25)":`${theme.primary}22`, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":`${theme.primary}44`}`, borderRadius:"6px", padding:"6px 10px", cursor:isManual?"pointer":"not-allowed", fontSize:"14px", opacity:isManual?1:0.4 }}>✏️</button>
+                          <button onClick={() => openEdit(t)} title={canEdit?"Editar":"Apenas admin"}
+                            style={{ background:isGlass?"rgba(255,255,255,0.25)":`${theme.primary}22`, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":`${theme.primary}44`}`, borderRadius:"6px", padding:"6px 10px", cursor:canEdit?"pointer":"not-allowed", fontSize:"14px", opacity:canEdit?1:0.4 }}>✏️</button>
                           <button onClick={() => duplicateTransaction(t)} title="Duplicar"
                             style={{ background:isGlass?"rgba(255,255,255,0.25)":`${theme.accent}22`, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":`${theme.accent}44`}`, borderRadius:"6px", padding:"6px 10px", cursor:"pointer", fontSize:"14px" }}>📋</button>
-                          <button onClick={() => isManual && deleteTransaction(t.id)} title={isManual?"Excluir":"Não excluível"}
-                            style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:"6px", padding:"6px 10px", cursor:isManual?"pointer":"not-allowed", fontSize:"14px", opacity:isManual?1:0.4 }}>🗑️</button>
+                          <button onClick={() => canEdit && deleteTransaction(t.id)} title={canEdit?"Excluir":"Apenas admin"}
+                            style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:"6px", padding:"6px 10px", cursor:canEdit?"pointer":"not-allowed", fontSize:"14px", opacity:canEdit?1:0.4 }}>🗑️</button>
                         </div>
                       </td>
                     </tr>
@@ -583,6 +621,112 @@ export default function Transactions() {
         </div>
       </div>
 
+      {/* ✅ MODAL ARQUIVO DO PEDIDO/OS */}
+      {(orderModal || loadingOrder) && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, backdropFilter:"blur(4px)" }}
+          onClick={() => { setOrderModal(null); }}>
+          <div style={{ ...glassModal, borderRadius:18, width:isMobile?"96%":"100%", maxWidth:600, maxHeight:"90vh", overflowY:"auto", boxShadow:isGlass?"0 20px 60px rgba(0,0,0,0.15)":"0 25px 60px rgba(0,0,0,0.6)" }}
+            onClick={e=>e.stopPropagation()}>
+
+            {loadingOrder ? (
+              <div style={{ padding:"60px", textAlign:"center", color:theme.textMuted }}>⏳ Carregando pedido...</div>
+            ) : orderModal && (
+              <>
+                {/* cabeçalho */}
+                <div style={{ padding:"24px 28px 20px", borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                        <span style={{ fontSize:"1.6rem" }}>{orderModal.number?.startsWith("OS-")?"⚙️":"📦"}</span>
+                        <div>
+                          <div style={{ fontSize:"0.72rem", color:theme.textMuted, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:600 }}>
+                            {orderModal.number?.startsWith("OS-")?"Ordem de Serviço":"Pedido"}
+                          </div>
+                          <div style={{ fontSize:"1.4rem", fontWeight:800, color:theme.primary }}>{orderModal.number}</div>
+                        </div>
+                      </div>
+                      {(() => { const st = STATUS_MAP_ORDER[orderModal.status]||STATUS_MAP_ORDER.open; return (
+                        <span style={{ display:"inline-block", padding:"4px 14px", borderRadius:20, fontSize:"0.78rem", fontWeight:700, background:st.bg, color:st.color, border:`1px solid ${st.color}44` }}>{st.label}</span>
+                      ); })()}
+                    </div>
+                    <button style={{ background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:34, height:34, borderRadius:8, cursor:"pointer", fontSize:14, flexShrink:0 }} onClick={()=>setOrderModal(null)}>✕</button>
+                  </div>
+                </div>
+
+                <div style={{ padding:"20px 28px" }}>
+                  {/* info */}
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:20 }}>
+                    {[
+                      { label:"Cliente",      value:orderModal.client_name || "—" },
+                      { label:"Origem",       value:orderModal.origin==="quote"?"🧾 Orçamento":"✏️ Venda Direta" },
+                      { label:"Criado em",    value:fmtDate(orderModal.created_at) },
+                      { label:"Concluído em", value:orderModal.finished_at ? fmtDate(orderModal.finished_at) : "—" },
+                    ].map((f,i)=>(
+                      <div key={i} style={{ padding:"10px 14px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgPrimary, borderRadius:10, border:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.border}` }}>
+                        <div style={{ fontSize:"0.72rem", color:theme.textMuted, fontWeight:600, textTransform:"uppercase", marginBottom:4 }}>{f.label}</div>
+                        <div style={{ fontSize:"0.9rem", color:theme.textPrimary, fontWeight:600 }}>{f.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* itens */}
+                  <div style={{ marginBottom:20 }}>
+                    <div style={{ fontSize:"0.78rem", fontWeight:700, color:theme.textMuted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Itens</div>
+                    <div style={{ border:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.borderCard}`, borderRadius:12, overflow:"hidden" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"3fr 1fr 1fr 1.5fr", gap:8, padding:"10px 14px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgCard, borderBottom:`1px solid ${isGlass?"rgba(255,255,255,0.2)":theme.borderCard}`, fontSize:"0.72rem", fontWeight:700, color:theme.textMuted, textTransform:"uppercase" }}>
+                        <span>Item</span><span>Qtd.</span><span>Preço</span><span style={{ textAlign:"right" }}>Total</span>
+                      </div>
+                      {(orderModal.items||[]).length===0 ? (
+                        <div style={{ padding:"20px", textAlign:"center", color:theme.textMuted, fontSize:"0.85rem" }}>Nenhum item registrado</div>
+                      ) : (orderModal.items||[]).map((item,i)=>(
+                        <div key={i} style={{ display:"grid", gridTemplateColumns:"3fr 1fr 1fr 1.5fr", gap:8, padding:"12px 14px", borderBottom:i<(orderModal.items||[]).length-1?`1px solid ${isGlass?"rgba(255,255,255,0.15)":theme.border}`:"none", alignItems:"center" }}>
+                          <div>
+                            <div style={{ fontWeight:600, color:theme.textPrimary, fontSize:"0.88rem" }}>{item.name||"—"}</div>
+                            <div style={{ fontSize:"0.72rem", color:theme.textMuted }}>{item.unit||"un"}</div>
+                          </div>
+                          <div style={{ color:theme.textSecondary, fontSize:"0.88rem" }}>{item.qty}</div>
+                          <div style={{ color:theme.textSecondary, fontSize:"0.88rem" }}>{fmt(item.price||0)}</div>
+                          <div style={{ color:theme.income, fontWeight:700, fontSize:"0.9rem", textAlign:"right" }}>{fmt(parseFloat(item.qty||0)*parseFloat(item.price||0))}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* totais */}
+                  <div style={{ padding:"16px 18px", background:isGlass?"rgba(255,255,255,0.15)":theme.bgPrimary, borderRadius:12, border:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.border}`, marginBottom:20 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}>
+                      <span style={{ color:theme.textMuted }}>Subtotal</span>
+                      <span style={{ color:theme.textPrimary }}>{fmt(orderModal.subtotal||0)}</span>
+                    </div>
+                    {orderModal.discount>0 && (
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}>
+                        <span style={{ color:"#ef4444" }}>Desconto ({orderModal.discount}%)</span>
+                        <span style={{ color:"#ef4444" }}>- {fmt((orderModal.subtotal||0)*((orderModal.discount||0)/100))}</span>
+                      </div>
+                    )}
+                    <div style={{ display:"flex", justifyContent:"space-between", paddingTop:10, marginTop:4, borderTop:`1px solid ${isGlass?"rgba(255,255,255,0.3)":theme.border}` }}>
+                      <span style={{ fontWeight:700, fontSize:"1rem", color:theme.textPrimary }}>TOTAL</span>
+                      <span style={{ fontWeight:800, fontSize:"1.2rem", color:theme.income }}>{fmt(orderModal.total||0)}</span>
+                    </div>
+                  </div>
+
+                  {/* ações */}
+                  <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                    <a href="/sales" style={{ ...saveBtn, textDecoration:"none", fontSize:"0.85rem", padding:"9px 16px", background:theme.primaryGrad, display:"inline-flex", alignItems:"center", gap:6, borderRadius:10 }}>
+                      🛒 Ir para Vendas
+                    </a>
+                    <button style={{ background:isGlass?"rgba(255,255,255,0.3)":theme.bgCard, color:theme.textSecondary, border:`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.borderCard}`, borderRadius:10, padding:"9px 16px", fontWeight:600, cursor:"pointer", fontSize:"0.85rem" }}
+                      onClick={()=>setOrderModal(null)}>
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* MODAL EDIÇÃO */}
       {editingTransaction && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(4px)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }} onClick={closeEdit}>
@@ -591,6 +735,12 @@ export default function Transactions() {
               <h3 style={{ fontSize:"18px", fontWeight:"700", margin:0, color:theme.textPrimary }}>✏️ Editar Transação</h3>
               <button onClick={closeEdit} style={{ background:isGlass?"rgba(255,255,255,0.4)":theme.bgCard, border:"none", color:theme.textPrimary, width:"32px", height:"32px", borderRadius:"8px", cursor:"pointer", fontSize:"14px" }}>✕</button>
             </div>
+            {/* aviso admin editando transação automática */}
+            {isAdmin && editingTransaction.source !== "manual" && (
+              <div style={{ background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.3)", borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:12, color:"#f59e0b" }}>
+                ⚠️ Você está editando uma transação automática de {editingTransaction.source === "sale" ? "venda" : "conta"}. A venda/conta vinculada não será afetada.
+              </div>
+            )}
             {isPersonal && (
               <div style={{ display:"flex", gap:10, marginBottom:20 }}>
                 {[{ v:"expense", label:"💸 Saída", color:theme.expense }, { v:"income", label:"💚 Entrada", color:theme.income }].map(opt => (
