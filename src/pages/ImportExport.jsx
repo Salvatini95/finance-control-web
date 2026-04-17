@@ -18,13 +18,17 @@ const MODULES = [
 // Campos esperados por módulo com label amigável
 const MODULE_FIELDS = {
   transactions: [
-    { key: 'type',        label: 'Tipo',        required: true  },
-    { key: 'description', label: 'Descrição',   required: true  },
-    { key: 'amount',      label: 'Valor',       required: true  },
-    { key: 'category',    label: 'Categoria',   required: false },
-    { key: 'date',        label: 'Data',        required: false },
-    { key: 'status',      label: 'Status',      required: false },
-    { key: 'notes',       label: 'Observações', required: false },
+    { key: 'type',         label: 'Tipo',             required: true,  hint: 'receita / despesa'     },
+    { key: 'description',  label: 'Descrição',        required: true,  hint: null                    },
+    { key: 'amount',       label: 'Valor',            required: true,  hint: null                    },
+    { key: 'category',     label: 'Categoria',        required: false, hint: null                    },
+    { key: 'date',         label: 'Data',             required: false, hint: 'dd/mm/aaaa'            },
+    { key: 'source',       label: 'Origem',           required: false, hint: 'venda / os / manual'   },
+    { key: 'client',       label: 'Cliente (venda)',  required: false, hint: 'nome do cliente'       },
+    { key: 'item_name',    label: 'Produto (venda)',  required: false, hint: 'nome do produto/serviço'},
+    { key: 'item_qty',     label: 'Quantidade',       required: false, hint: null                    },
+    { key: 'item_price',   label: 'Preço Unitário',   required: false, hint: null                    },
+    { key: 'order_number', label: 'Nº do Pedido/OS',  required: false, hint: 'ex: PED-2025-001'      },
   ],
   bills: [
     { key: 'type',        label: 'Tipo',        required: true  },
@@ -66,13 +70,17 @@ const MODULE_FIELDS = {
 // Mapeamento automático por similaridade de nome
 const AUTO_ALIASES = {
   transactions: {
-    type:        ['Tipo','tipo','Natureza','natureza'],
-    description: ['Descrição','descricao','Histórico','historico','Description','Memo'],
-    amount:      ['Valor','valor','Amount','Valor Lançamento'],
-    category:    ['Categoria','categoria','Category','Plano de Contas'],
-    date:        ['Data','data','Date','Competência','competencia'],
-    status:      ['Status','status','Situação'],
-    notes:       ['Observações','observacoes','Obs','Complemento'],
+    type:         ['Tipo','tipo','Natureza','natureza'],
+    description:  ['Descrição','descricao','Histórico','historico','Description','Memo'],
+    amount:       ['Valor','valor','Amount','Valor Lançamento'],
+    category:     ['Categoria','categoria','Category','Plano de Contas'],
+    date:         ['Data','data','Date','Competência','competencia'],
+    source:       ['Origem','origem','Source','Fonte','Tipo Lançamento'],
+    client:       ['Cliente','cliente','Client','Razão Social','Sacado'],
+    item_name:    ['Produto','produto','Item','item','Serviço','servico','Descrição do Item'],
+    item_qty:     ['Quantidade','quantidade','Qtd','qtd','Qty'],
+    item_price:   ['Preço Unitário','preco_unitario','Unit Price','Preço Unit','Vlr Unit'],
+    order_number: ['Número Pedido','numero_pedido','N. Pedido','Order Number','Nº OS','Nº Pedido'],
   },
   bills: {
     type:        ['Tipo','tipo','Natureza'],
@@ -548,13 +556,14 @@ export default function ImportExport() {
                       const isAuto  = !!mapped;
                       return (
                         <div key={field.key} style={{ background:isGlass?'rgba(255,255,255,0.15)':'rgba(255,255,255,0.04)', borderRadius:10, padding:'12px 14px', border:`1px solid ${isAuto?'rgba(99,102,241,0.3)':cardBorder}` }}>
-                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
                             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                               <span style={{ color:textMain, fontWeight:600, fontSize:13 }}>{field.label}</span>
                               {field.required && <span style={{ fontSize:10, color:'#f87171', background:'rgba(239,68,68,0.15)', padding:'1px 6px', borderRadius:4 }}>obrigatório</span>}
                             </div>
                             {isAuto && <span style={{ fontSize:11, color:'#818cf8' }}>✅ auto</span>}
                           </div>
+                          {field.hint && <div style={{ fontSize:11, color:textSub, marginBottom:6, opacity:0.7 }}>ex: {field.hint}</div>}
                           <select
                             value={importMapping[field.key] || ''}
                             onChange={e => setImportMapping(p => ({ ...p, [field.key]: e.target.value || undefined }))}
@@ -609,6 +618,29 @@ export default function ImportExport() {
                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                       <span style={{ fontSize: 20 }}>ℹ️</span>
                       <div style={{ color: textMain, fontSize: 13, lineHeight: 1.5 }}>{importResult.info}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Vendas criadas sem cliente */}
+                {importResult.orders_no_client?.length > 0 && (
+                  <div style={{ ...card, border:'1px solid rgba(245,158,11,0.35)', background:isGlass?'rgba(245,158,11,0.1)':'rgba(245,158,11,0.06)' }}>
+                    <h4 style={{ color:'#f59e0b', margin:'0 0 12px', fontSize:14, fontWeight:700 }}>
+                      ⚠️ {importResult.orders_no_client.length} venda(s) criada(s) sem cliente identificado
+                    </h4>
+                    <p style={{ color:textSub, fontSize:12, margin:'0 0 12px' }}>
+                      Acesse <strong>Vendas</strong> e edite essas ordens para vincular o cliente correto:
+                    </p>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {importResult.orders_no_client.map((o, i) => (
+                        <div key={i} style={{ background:isGlass?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.04)', borderRadius:8, padding:'10px 14px', border:`1px solid rgba(245,158,11,0.2)`, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+                          <div>
+                            <div style={{ color:textMain, fontWeight:600, fontSize:13 }}>{o.order_number}</div>
+                            <div style={{ color:textSub, fontSize:12, marginTop:2 }}>{o.description} — linha {o.row}</div>
+                          </div>
+                          <a href="/sales" style={{ fontSize:12, color:'#f59e0b', fontWeight:600, textDecoration:'underline' }}>Ver em Vendas →</a>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
