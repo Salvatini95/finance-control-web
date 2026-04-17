@@ -6,12 +6,13 @@ import { useTheme } from '../contexts/ThemeContext';
 const BASE_URL = 'https://finance-control-api-production.up.railway.app/api';
 
 const MODULES = [
-  { key: 'transactions', label: 'Transações',  icon: '💰', description: 'Receitas e despesas',     hasTemplate: true,  supportsDateFilter: true,  canImport: true  },
-  { key: 'bills',        label: 'Contas',       icon: '📄', description: 'Contas a pagar/receber',  hasTemplate: true,  supportsDateFilter: true,  canImport: true  },
-  { key: 'clients',      label: 'Clientes',     icon: '👥', description: 'Base de clientes',        hasTemplate: true,  supportsDateFilter: true,  canImport: true  },
-  { key: 'products',     label: 'Produtos',     icon: '📦', description: 'Produtos e serviços',     hasTemplate: true,  supportsDateFilter: false, canImport: true  },
-  { key: 'quotes',       label: 'Orçamentos',   icon: '🧾', description: 'Orçamentos emitidos',     hasTemplate: false, supportsDateFilter: true,  canImport: false },
-  { key: 'sales',        label: 'Vendas',       icon: '🛒', description: 'Pedidos e OS',            hasTemplate: false, supportsDateFilter: true,  canImport: false },
+  { key: 'transactions', label: 'Transações',  icon: '💰', description: 'Receitas e despesas',     hasTemplate: true,  supportsDateFilter: true,  canImport: true,  adminOnly: false },
+  { key: 'bills',        label: 'Contas',       icon: '📄', description: 'Contas a pagar/receber',  hasTemplate: true,  supportsDateFilter: true,  canImport: true,  adminOnly: false },
+  { key: 'clients',      label: 'Clientes',     icon: '👥', description: 'Base de clientes',        hasTemplate: true,  supportsDateFilter: true,  canImport: true,  adminOnly: false },
+  { key: 'products',     label: 'Produtos',     icon: '📦', description: 'Produtos e serviços',     hasTemplate: true,  supportsDateFilter: false, canImport: true,  adminOnly: false },
+  { key: 'quotes',       label: 'Orçamentos',   icon: '🧾', description: 'Orçamentos emitidos',     hasTemplate: false, supportsDateFilter: true,  canImport: false, adminOnly: false },
+  { key: 'sales',        label: 'Vendas',       icon: '🛒', description: 'Pedidos e OS',            hasTemplate: false, supportsDateFilter: true,  canImport: false, adminOnly: false },
+  { key: 'team',         label: 'Equipe',       icon: '👤', description: 'Membros da equipe',       hasTemplate: true,  supportsDateFilter: false, canImport: true,  adminOnly: true  },
 ];
 
 // Campos esperados por módulo com label amigável
@@ -54,6 +55,12 @@ const MODULE_FIELDS = {
     { key: 'unit',        label: 'Unidade',        required: false },
     { key: 'description', label: 'Descrição',      required: false },
   ],
+  team: [
+    { key: 'name',   label: 'Nome',   required: true  },
+    { key: 'email',  label: 'Email',  required: true  },
+    { key: 'role',   label: 'Role',   required: true  },
+    { key: 'active', label: 'Ativo',  required: false },
+  ],
 };
 
 // Mapeamento automático por similaridade de nome
@@ -95,6 +102,12 @@ const AUTO_ALIASES = {
     stock_min:   ['Estoque Mínimo','estoque_min'],
     unit:        ['Unidade','unidade','Unit'],
     description: ['Descrição','descricao','Description'],
+  },
+  team: {
+    name:   ['Nome','nome','Name'],
+    email:  ['Email','email','E-mail'],
+    role:   ['Role','role','Função','Perfil','Cargo'],
+    active: ['Ativo','ativo','Active','Status'],
   },
 };
 
@@ -148,6 +161,10 @@ export default function ImportExport() {
   const fileRef = useRef();
 
   const token = () => localStorage.getItem('token');
+  const role  = localStorage.getItem('role') || 'viewer';
+
+  // Módulos visíveis conforme role
+  const visibleModules = MODULES.filter(m => !m.adminOnly || role === 'admin');
 
   // ── cores ──
   const cardBg     = isGlass ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.06)';
@@ -200,7 +217,7 @@ export default function ImportExport() {
     if (exportDates.to)   params.append('date_to',   exportDates.to);
     params.append('format', exportFormat);
     const blobs = []; const progress = [];
-    for (const mod of MODULES) {
+    for (const mod of visibleModules) {
       const p = new URLSearchParams(params);
       if (!mod.supportsDateFilter) { p.delete('date_from'); p.delete('date_to'); }
       try {
@@ -374,7 +391,7 @@ export default function ImportExport() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
                 <div>
                   <div style={{ color: textMain, fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>📦 Exportar Tudo</div>
-                  <div style={{ color: textSub, fontSize: 13, marginTop: 4 }}>Baixa todos os {MODULES.length} módulos de uma vez{exportFormat === 'csv' ? ' em CSV' : ' em Excel'}</div>
+                  <div style={{ color: textSub, fontSize: 13, marginTop: 4 }}>Baixa todos os {visibleModules.length} módulos de uma vez{exportFormat === 'csv' ? ' em CSV' : ' em Excel'}</div>
                 </div>
                 <button onClick={handleExportAll} disabled={exportAllLoading} style={{ padding: '11px 28px', borderRadius: 10, border: 'none', cursor: exportAllLoading ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, background: exportAllSuccess ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#6366f1,#4f46e5)', color: '#fff', opacity: exportAllLoading ? 0.8 : 1, boxShadow: '0 4px 16px rgba(99,102,241,0.3)', whiteSpace: 'nowrap' }}>
                   {exportAllLoading ? '⏳ Exportando...' : exportAllSuccess ? '✅ Concluído!' : '📦 Exportar Tudo'}
@@ -393,7 +410,7 @@ export default function ImportExport() {
 
             {/* Grid módulos */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-              {MODULES.map(mod => (
+              {visibleModules.map(mod => (
                 <div key={mod.key} style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{ fontSize: 26 }}>{mod.icon}</span>
@@ -458,8 +475,8 @@ export default function ImportExport() {
                       <label style={{ color: textSub, fontSize: 12, fontWeight: 700, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Módulo de destino</label>
                       <select value={importModule} onChange={e => handleModuleChange(e.target.value)}
                         style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${cardBorder}`, background: inputBg, color: textMain, fontSize: 14, outline: 'none', minWidth: 220 }}>
-                        {MODULES.filter(m => m.canImport).map(m => (
-                          <option key={m.key} value={m.key}>{m.icon} {m.label}</option>
+                        {visibleModules.filter(m => m.canImport).map(m => (
+                          <option key={m.key} value={m.key}>{m.icon} {m.label}{m.adminOnly ? ' (admin)' : ''}</option>
                         ))}
                       </select>
                     </div>
@@ -585,6 +602,16 @@ export default function ImportExport() {
                     </div>
                   ))}
                 </div>
+
+                {/* Info especial (ex: equipe precisa redefinir senha) */}
+                {importResult.info && (
+                  <div style={{ ...card, border: '1px solid rgba(99,102,241,0.3)', background: isGlass ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: 20 }}>ℹ️</span>
+                      <div style={{ color: textMain, fontSize: 13, lineHeight: 1.5 }}>{importResult.info}</div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Duplicatas notificadas */}
                 {importResult.duplicates_notified?.length > 0 && (
