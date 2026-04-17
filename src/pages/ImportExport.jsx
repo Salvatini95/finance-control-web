@@ -35,14 +35,12 @@ const MODULE_FIELDS = {
     { key: 'notes',       label: 'Observações', required: false },
   ],
   clients: [
-    { key: 'name',     label: 'Nome',       required: true  },
-    { key: 'email',    label: 'Email',      required: false },
-    { key: 'phone',    label: 'Telefone',   required: false },
-    { key: 'document', label: 'Documento',  required: false },
-    { key: 'address',  label: 'Endereço',   required: false },
-    { key: 'city',     label: 'Cidade',     required: false },
-    { key: 'state',    label: 'Estado',     required: false },
-    { key: 'notes',    label: 'Observações',required: false },
+    { key: 'name',     label: 'Nome',        required: true  },
+    { key: 'email',    label: 'Email',       required: false },
+    { key: 'phone',    label: 'Telefone',    required: false },
+    { key: 'document', label: 'Documento',   required: false },
+    { key: 'address',  label: 'Endereço',    required: false },
+    { key: 'notes',    label: 'Observações', required: false },
   ],
   products: [
     { key: 'name',        label: 'Nome',           required: true  },
@@ -84,8 +82,6 @@ const AUTO_ALIASES = {
     phone:    ['Telefone','telefone','Phone','Celular'],
     document: ['Documento','documento','CPF','CNPJ','CPF/CNPJ'],
     address:  ['Endereço','endereco','Address'],
-    city:     ['Cidade','cidade','City'],
-    state:    ['Estado','estado','UF'],
     notes:    ['Observações','observacoes','Obs'],
   },
   products: {
@@ -268,9 +264,20 @@ export default function ImportExport() {
     finally { setImportLoading(false); }
   };
 
+  // Reset completo (usado no "Voltar" e "Nova Importação")
   const resetImport = () => {
     setUploadFile(null); setImportPreview(null); setImportMapping({});
     setImportResult(null); setImportStep('upload');
+  };
+
+  // Troca de módulo — preserva o arquivo, limpa só preview/mapeamento
+  const handleModuleChange = (newModule) => {
+    setImportModule(newModule);
+    setImportPreview(null);
+    setImportMapping({});
+    setImportResult(null);
+    setImportStep('upload');
+    // Não zera uploadFile — usuário pode reanalizar o mesmo arquivo
   };
 
   const tabBtn = (active) => ({
@@ -449,7 +456,7 @@ export default function ImportExport() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     <div>
                       <label style={{ color: textSub, fontSize: 12, fontWeight: 700, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Módulo de destino</label>
-                      <select value={importModule} onChange={e => { setImportModule(e.target.value); resetImport(); }}
+                      <select value={importModule} onChange={e => handleModuleChange(e.target.value)}
                         style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${cardBorder}`, background: inputBg, color: textMain, fontSize: 14, outline: 'none', minWidth: 220 }}>
                         {MODULES.filter(m => m.canImport).map(m => (
                           <option key={m.key} value={m.key}>{m.icon} {m.label}</option>
