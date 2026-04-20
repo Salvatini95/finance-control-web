@@ -4,6 +4,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import logoGif from "../assets/video.gif";
+import ProductReportModal from "../components/ProductReportModal";
 
 const API = "https://finance-control-api-production.up.railway.app/api";
 const token = () => localStorage.getItem("token");
@@ -21,7 +22,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-// ✅ SKU adicionado no EMPTY_FORM
 const EMPTY_FORM     = { name:"", sku:"", description:"", type:"service", unit:"un", cost:"", price:"", category:"", active:true, stock_min:0, stock_qty_initial:0 };
 const EMPTY_MOVEMENT = { type:"in", qty:"", cost:"", reason:"", date:"" };
 const EMPTY_SERVICE  = { client_id:"", duration_min:"", amount:"", notes:"", date:"" };
@@ -57,6 +57,7 @@ export default function Products() {
   const [svcModal, setSvcModal]             = useState(false);
   const [svcForm, setSvcForm]               = useState(EMPTY_SERVICE);
   const [toast, setToast]                   = useState(null);
+  const [reportModal, setReportModal]       = useState(false); // ← NOVO
 
   async function fetchProducts() {
     setLoading(true);
@@ -113,7 +114,6 @@ export default function Products() {
   function openEdit(p) {
     if (!canEdit) return;
     setEditing(p);
-    // ✅ SKU incluído no openEdit
     setForm({
       name:p.name, sku:p.sku||"", description:p.description||"", type:p.type,
       unit:p.unit||"un", cost:p.cost, price:p.price,
@@ -192,7 +192,6 @@ export default function Products() {
 
   const filtered = products.filter(p => {
     const typeOk   = filterType==="all" || p.type===filterType;
-    // ✅ busca também por SKU
     const searchOk = p.name.toLowerCase().includes(search.toLowerCase())
       || (p.category||"").toLowerCase().includes(search.toLowerCase())
       || (p.sku||"").toLowerCase().includes(search.toLowerCase());
@@ -213,7 +212,6 @@ export default function Products() {
   const fieldStyle   = { display:"flex", flexDirection:"column", gap:6 };
   const tabStyle     = (active) => ({ padding:"8px 18px", borderRadius:8, fontSize:"0.85rem", fontWeight:600, cursor:"pointer", border:"none", transition:"all 0.2s", background:active?theme.primaryGrad:(isGlass?"rgba(255,255,255,0.2)":theme.bgCard), color:active?"#fff":theme.textMuted, boxShadow:active?`0 4px 12px ${theme.primary}33`:"none" });
 
-  // ✅ cabeçalhos com SKU para canEdit no desktop
   const tableHeaders = isMobile
     ? ["Nome","Tipo","Preço","Estq.","Ações"]
     : canEdit
@@ -248,9 +246,23 @@ export default function Products() {
               </p>
             </div>
           </div>
-          {canEdit && (
-            <button style={{ ...btnPrimary, whiteSpace:"nowrap" }} onClick={openCreate}>+ Novo Item</button>
-          )}
+          {/* ── BOTÕES DO HEADER ── */}
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            {/* Botão Relatório — visível para admin, financial e stock */}
+            {canEdit && (
+              <button
+                onClick={() => setReportModal(true)}
+                style={{ ...btnSecondary, display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap" }}
+              >
+                📊 {isMobile ? "Relatório" : "Relatório PDF"}
+              </button>
+            )}
+            {canEdit && (
+              <button style={{ ...btnPrimary, whiteSpace:"nowrap" }} onClick={openCreate}>
+                + {isMobile ? "Novo" : "Novo Item"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* CARDS */}
@@ -273,7 +285,6 @@ export default function Products() {
 
         {/* FILTROS */}
         <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:20, alignItems:"center" }}>
-          {/* ✅ busca também por SKU */}
           <input style={{ ...inputStyle, width:isMobile?"100%":"280px" }} type="text" placeholder="🔍 Buscar por nome, SKU ou categoria..." value={search} onChange={e=>setSearch(e.target.value)} />
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             {["all","product","service"].map(f=>(
@@ -316,7 +327,6 @@ export default function Products() {
                           <div style={{ fontWeight:600, color:theme.textPrimary }}>{p.name}</div>
                           {!isMobile&&p.category&&<div style={{ fontSize:"0.75rem", color:theme.textMuted }}>{p.category}</div>}
                         </td>
-                        {/* ✅ coluna SKU na tabela */}
                         {!isMobile && (
                           <td style={{ padding:"12px 16px", verticalAlign:"middle" }}>
                             {p.sku ? (
@@ -384,7 +394,6 @@ export default function Products() {
                 <div>
                   <div style={{ fontWeight:700, fontSize:"1rem", color:theme.textPrimary, marginBottom:2 }}>{detailProduct.name}</div>
                   <div style={{ fontSize:"0.75rem", color:theme.textMuted }}>{detailProduct.type==="product"?"📦 Produto":"⚙️ Serviço"} · {detailProduct.category||"Sem categoria"}</div>
-                  {/* ✅ SKU no painel de detalhe */}
                   {detailProduct.sku && (
                     <div style={{ marginTop:4 }}>
                       <span style={{ background:isGlass?"rgba(255,255,255,0.3)":`${theme.primary}11`, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":`${theme.primary}22`}`, borderRadius:6, padding:"2px 8px", fontSize:"0.72rem", fontWeight:600, color:theme.primary, fontFamily:"monospace" }}>
@@ -520,19 +529,15 @@ export default function Products() {
             </div>
             <form onSubmit={handleSubmit}>
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16, marginBottom:24 }}>
-
                 <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
                   <label style={labelStyle}>Nome *</label>
                   <input style={inputStyle} required placeholder="Nome do produto ou serviço" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} />
                 </div>
-
-                {/* ✅ CAMPO SKU */}
                 <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
                   <label style={labelStyle}>Código / SKU</label>
                   <input style={inputStyle} placeholder="Ex: PROD-001, SRV-042, ELE-103..." value={form.sku} onChange={e=>setForm({...form,sku:e.target.value})} />
                   <span style={{ fontSize:"0.72rem", color:theme.textMuted, paddingLeft:4 }}>Código de referência interno (opcional)</span>
                 </div>
-
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Tipo *</label>
                   <select style={selectStyle} value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
@@ -540,24 +545,20 @@ export default function Products() {
                     <option value="product">📦 Produto</option>
                   </select>
                 </div>
-
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Unidade</label>
                   <select style={selectStyle} value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})}>
                     {["un","hr","kg","g","m","m²","m³","L","cx","pc","par","vb"].map(u=><option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
-
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Custo (R$)</label>
                   <input style={inputStyle} type="number" step="0.01" min="0" placeholder="0,00" value={form.cost} onChange={e=>setForm({...form,cost:e.target.value})} />
                 </div>
-
                 <div style={fieldStyle}>
                   <label style={labelStyle}>Preço de Venda (R$) *</label>
                   <input style={inputStyle} type="number" step="0.01" min="0" required placeholder="0,00" value={form.price} onChange={e=>setForm({...form,price:e.target.value})} />
                 </div>
-
                 {form.type==="product"&&(
                   <>
                     <div style={fieldStyle}>
@@ -573,7 +574,6 @@ export default function Products() {
                     )}
                   </>
                 )}
-
                 {form.price>0&&(
                   <div style={{ gridColumn:"1 / -1" }}>
                     <div style={{ background:isGlass?"rgba(255,255,255,0.2)":`${theme.primary}11`, border:`1px solid ${isGlass?"rgba(255,255,255,0.4)":`${theme.primary}22`}`, borderRadius:10, padding:"10px 16px", display:"flex", gap:24, fontSize:"0.88rem", color:theme.textSecondary, flexWrap:"wrap" }}>
@@ -582,12 +582,10 @@ export default function Products() {
                     </div>
                   </div>
                 )}
-
                 <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
                   <label style={labelStyle}>Categoria</label>
                   <input style={inputStyle} placeholder="Ex: Mão de obra, Elétrica, TI..." value={form.category} onChange={e=>setForm({...form,category:e.target.value})} />
                 </div>
-
                 <div style={{ ...fieldStyle, gridColumn:"1 / -1" }}>
                   <label style={labelStyle}>Descrição</label>
                   <textarea style={{ ...inputStyle, resize:"vertical", minHeight:70 }} placeholder="Detalhes..." value={form.description} onChange={e=>setForm({...form,description:e.target.value})} />
@@ -706,6 +704,15 @@ export default function Products() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── MODAL RELATÓRIO DE PRODUTOS ── */}
+      {reportModal && (
+        <ProductReportModal
+          onClose={() => setReportModal(false)}
+          theme={theme}
+          isGlass={isGlass}
+        />
       )}
 
       {toast&&(
