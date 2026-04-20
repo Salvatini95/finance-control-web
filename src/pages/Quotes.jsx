@@ -250,15 +250,41 @@ export default function Quotes() {
   async function handleSell(quote) {
     setSelling(true);
     try {
-      const res  = await fetch(`${API}/orders/from-quote/${quote.id}`, {
-        method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` },
+      const headers = { "Content-Type":"application/json", Authorization:`Bearer ${token()}` };
+
+      // Passo 1: Garante status aprovado (independente do status atual)
+      if (quote.status !== "approved") {
+        await fetch(`${API}/quotes/${quote.id}/status`, {
+          method:"PATCH", headers, body:JSON.stringify({ status:"approved" }),
+        });
+      }
+
+      // Passo 2: Cria a Order a partir do orçamento
+      const resOrder = await fetch(`${API}/orders/from-quote/${quote.id}`, {
+        method:"POST", headers,
       });
-      const data = await res.json();
-      if (res.ok || res.status===200) {
-        showToast(`✅ Venda ${data.number} criada! Acesse Vendas para concluir.`);
-        setSellConfirm(null); fetchQuotes();
-        setTimeout(() => navigate("/sales"), 1500);
-      } else { showToast(data.msg||"Erro ao criar venda.","error"); }
+      const orderData = await resOrder.json();
+      if (!resOrder.ok && resOrder.status !== 200) {
+        showToast(orderData.msg || "Erro ao criar venda.", "error");
+        return;
+      }
+      const orderId     = orderData.id;
+      const orderNumber = orderData.number;
+
+      // Passo 3: Conclui a venda imediatamente (baixa estoque + cria transação)
+      const resComplete = await fetch(`${API}/orders/${orderId}/complete`, {
+        method:"POST", headers,
+      });
+      const completeData = await resComplete.json();
+      if (!resComplete.ok) {
+        showToast(completeData.msg || "Erro ao concluir venda.", "error");
+        return;
+      }
+
+      showToast(`✅ ${orderNumber} concluída! Estoque baixado e transação registrada.`);
+      setSellConfirm(null);
+      fetchQuotes();
+      setTimeout(() => navigate("/sales"), 1500);
     } catch { showToast("Erro de conexão.","error"); }
     finally { setSelling(false); }
   }
@@ -732,7 +758,7 @@ export default function Quotes() {
                       {!isMobile&&<td style={{ ...td, color:theme.textMuted }}>{fmtDate(q.created_at)}</td>}
                       <td style={td}>
                         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                          {isApproved&&<button className="btn-sell" onClick={() => setSellConfirm(q)}>🛒 Vender</button>}
+                          {q.status !== "cancelled" && q.status !== "rejected" && <button className="btn-sell" onClick={() => setSellConfirm(q)}>🛒 Vender</button>}
                           <button style={btnAction} onClick={() => openPrint(q)}>🖨️</button>
                           <button style={btnAction} onClick={() => openEdit(q)}>✏️</button>
                           <button style={{ ...btnAction, background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)" }} onClick={() => setDeleteConfirm(q)}>🗑️</button>
@@ -754,18 +780,25 @@ export default function Quotes() {
             <div style={{ textAlign:"center", marginBottom:24 }}>
               <div style={{ fontSize:"3rem", marginBottom:12 }}>🛒</div>
               <h2 style={{ margin:"0 0 8px", fontSize:"1.3rem", fontWeight:700, color:theme.textPrimary }}>Confirmar Venda</h2>
-              <p style={{ color:theme.textMuted, margin:0, fontSize:"0.9rem" }}>Converter orçamento <strong style={{ color:theme.textPrimary }}>{sellConfirm.number}</strong> em venda?</p>
+              <p style={{ color:theme.textMuted, margin:0, fontSize:"0.9rem" }}>
+                Converter <strong style={{ color:theme.textPrimary }}>{sellConfirm.number}</strong> em venda concluída?
+              </p>
+              {sellConfirm.status !== "approved" && (
+                <div style={{ background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.3)", borderRadius:10, padding:"8px 14px", marginTop:10, fontSize:12, color:"#f59e0b", display:"flex", gap:8, alignItems:"center" }}>
+                  ⚡ O status será alterado para <strong>Aprovado</strong> automaticamente
+                </div>
+              )}
             </div>
             <div style={{ background:isGlass?"rgba(34,197,94,0.1)":"rgba(34,197,94,0.08)", border:"1px solid rgba(34,197,94,0.25)", borderRadius:12, padding:"16px 20px", marginBottom:24 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}><span style={{ color:theme.textMuted }}>Cliente</span><span style={{ color:theme.textPrimary, fontWeight:600 }}>{sellConfirm.client_name}</span></div>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:"0.88rem" }}><span style={{ color:theme.textMuted }}>Itens</span><span style={{ color:theme.textPrimary }}>{(sellConfirm.items||[]).length} item(ns)</span></div>
               <div style={{ display:"flex", justifyContent:"space-between", borderTop:"1px solid rgba(34,197,94,0.2)", paddingTop:10, marginTop:4 }}><span style={{ color:"#22c55e", fontWeight:700 }}>Total</span><span style={{ color:"#22c55e", fontWeight:700, fontSize:"1.1rem" }}>{fmt(sellConfirm.total)}</span></div>
             </div>
-            <p style={{ color:theme.textMuted, fontSize:"0.82rem", textAlign:"center", marginBottom:20 }}>Uma venda será criada com status <strong>Aberta</strong>. Acesse <strong>Vendas</strong> para concluir quando o cliente pagar.</p>
+            <p style={{ color:theme.textMuted, fontSize:"0.82rem", textAlign:"center", marginBottom:20 }}>O orçamento será <strong style={{color:"#22c55e"}}>aprovado</strong>, a venda criada e <strong style={{color:"#22c55e"}}>concluída automaticamente</strong>. Estoque será baixado e a transação lançada.</p>
             <div style={{ display:"flex", gap:12, flexDirection:isMobile?"column":"row" }}>
               <button style={{ ...btnSecondary, flex:1 }} onClick={() => setSellConfirm(null)} disabled={selling}>Cancelar</button>
               <button style={{ flex:2, background:"linear-gradient(135deg,#22c55e,#16a34a)", color:"#fff", border:"none", borderRadius:10, padding:"12px 20px", fontWeight:700, cursor:selling?"not-allowed":"pointer", fontSize:"1rem", boxShadow:"0 4px 15px rgba(34,197,94,0.4)", opacity:selling?0.7:1 }} onClick={() => handleSell(sellConfirm)} disabled={selling}>
-                {selling?"Criando venda...":"🛒 Confirmar e Criar Venda"}
+                {selling?"⏳ Processando...":"🛒 Confirmar e Concluir Venda"}
               </button>
             </div>
           </div>
