@@ -169,133 +169,182 @@ function DropdownPortal({ items, anchorIdx, theme, isGlass, border, isActive, on
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ESTILO 2 — HORIZONTAL com auto-hide + dropdown
+// ESTILO 2 — HORIZONTAL com auto-hide + setas de navegação + dropdown
 // ═══════════════════════════════════════════════════════════════════════════════
 function SidebarHorizontal({ menuItems, theme, isGlass }) {
-  const location = useLocation();
-  const isActive = p => location.pathname === p;
-  const navigate = useNavigate();
+  const location  = useLocation();
+  const isActive  = p => location.pathname === p;
+  const navigate  = useNavigate();
 
   const [autoHide, setAutoHideState] = useState(getAutoHide());
-  const [visible,  setVisible]       = useState(!getAutoHide());
+  const [visible,  setVisible]       = useState(true);
   const [openMenu, setOpenMenu]      = useState(null);
-  const hideTimer = useRef(null);
+  const [canScrollL, setCanScrollL]  = useState(false);
+  const [canScrollR, setCanScrollR]  = useState(false);
+  const scrollRef  = useRef(null);
+  const hideTimer  = useRef(null);
+  const barH       = 54;
 
-  const bg      = isGlass ? "rgba(255,255,255,0.18)" : theme.sidebarBg || theme.bgSecondary;
-  const border  = isGlass ? "rgba(255,255,255,0.4)"  : theme.borderCard;
-  const backdrop= isGlass ? "blur(24px) saturate(160%)" : "blur(18px)";
-
-  const showBar = () => {
-    clearTimeout(hideTimer.current);
-    setVisible(true);
+  // Verificar se pode scrollar
+  const checkScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollL(el.scrollLeft > 4);
+    setCanScrollR(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
   };
-  const startHide = () => {
+  useEffect(() => { checkScroll(); }, [menuItems]);
+
+  const scrollNav = (dir) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * 160, behavior: "smooth" });
+    setTimeout(checkScroll, 350);
+  };
+
+  // Auto-hide logic
+  useEffect(() => {
+    if (autoHide) setVisible(false);
+    else setVisible(true);
+  }, [autoHide]);
+
+  const showBar  = () => { clearTimeout(hideTimer.current); setVisible(true); };
+  const startHide= () => {
     if (!autoHide) return;
-    hideTimer.current = setTimeout(() => { setVisible(false); setOpenMenu(null); }, 600);
+    hideTimer.current = setTimeout(() => { setVisible(false); setOpenMenu(null); }, 700);
   };
 
   const toggleAutoHide = () => {
     const next = !autoHide;
     setAutoHideState(next);
     setAutoHideLS(next);
-    setVisible(!next);
+    if (!next) setVisible(true);
     window.dispatchEvent(new Event("sv_sidebar_style_changed"));
   };
 
-  // Zona de trigger no topo quando escondido
-  const triggerH = 6;
-  const barH     = 58;
+  const bg      = isGlass ? "rgba(15,20,40,0.75)" : "rgba(12,16,32,0.88)";
+  const border  = isGlass ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.08)";
 
   return (
     <>
-      {/* Zona de ativação — strip invisível no topo */}
-      {autoHide && !visible && (
-        <div style={{ position:"fixed", top:0, left:0, right:0, height:triggerH, zIndex:210 }}
-          onMouseEnter={showBar}/>
-      )}
+      {/* Zona de trigger — strip no topo */}
+      <div style={{ position:"fixed", top:0, left:0, right:0, height: autoHide ? 8 : barH,
+        zIndex:201, pointerEvents:"all" }}
+        onMouseEnter={showBar} onMouseLeave={startHide}/>
 
       {/* Barra principal */}
       <div
         onMouseEnter={showBar}
         onMouseLeave={startHide}
         style={{
-          position:"fixed", top:0, left:0, right:0, zIndex:200,
-          height:barH,
+          position:"fixed", top:0, left:0, right:0, zIndex:200, height:barH,
           background:bg,
-          backdropFilter:backdrop, WebkitBackdropFilter:backdrop,
+          backdropFilter:"blur(28px) saturate(180%)",
+          WebkitBackdropFilter:"blur(28px) saturate(180%)",
           borderBottom:`1px solid ${border}`,
-          boxShadow:"0 4px 24px rgba(0,0,0,0.25)",
-          display:"flex", alignItems:"center", padding:"0 16px", gap:4,
-          transform:visible?"translateY(0)":"translateY(-100%)",
-          transition:"transform 0.28s cubic-bezier(0.4,0,0.2,1)",
+          boxShadow:"0 4px 32px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05) inset",
+          display:"flex", alignItems:"center", gap:0,
+          transform: visible ? "translateY(0)" : "translateY(-100%)",
+          transition:"transform 0.3s cubic-bezier(0.4,0,0.2,1)",
         }}>
+
         {/* Logo */}
-        <span style={{ fontWeight:700, fontSize:15, color:theme.textPrimary, marginRight:12, whiteSpace:"nowrap", letterSpacing:1 }}>
+        <span style={{ fontWeight:700, fontSize:14, color:"rgba(255,255,255,0.92)",
+          padding:"0 16px", whiteSpace:"nowrap", letterSpacing:0.5, flexShrink:0 }}>
           SV Finance
         </span>
 
-        {/* Items */}
-        <div style={{ display:"flex", alignItems:"center", gap:2, flex:1, overflowX:"auto" }}>
-          {menuItems.map((item, idx) => {
-            const active    = isActive(item.to);
-            const hasChild  = item.children?.length > 0;
-            const isOpen    = openMenu === idx;
-            const hoverBg   = isGlass?"rgba(255,255,255,0.2)":`${theme.primary}18`;
+        {/* Seta esquerda */}
+        {canScrollL && (
+          <button onClick={() => scrollNav(-1)}
+            style={{ background:"none", border:"none", color:"rgba(255,255,255,0.5)",
+              fontSize:16, cursor:"pointer", padding:"0 6px", flexShrink:0,
+              transition:"color 0.2s" }}
+            onMouseEnter={e=>e.currentTarget.style.color="rgba(255,255,255,0.9)"}
+            onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.5)"}>
+            ‹
+          </button>
+        )}
 
-            return (
-              <div key={item.to} style={{ position:"relative" }}>
-                <div
-                  onClick={() => {
-                    if (hasChild) { setOpenMenu(isOpen ? null : idx); }
-                    else { navigate(item.to); setOpenMenu(null); }
-                  }}
-                  data-navitem={idx}
-                  style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px",
-                    borderRadius:10, cursor:"pointer", whiteSpace:"nowrap", userSelect:"none",
-                    color:active?theme.textPrimary:theme.textMuted,
-                    background:active?(isGlass?"rgba(255,255,255,0.3)":`${theme.primary}22`):"transparent",
-                    border:active?`1px solid ${isGlass?"rgba(255,255,255,0.5)":`${theme.primary}44`}`:"1px solid transparent",
-                    fontWeight:active?700:400, fontSize:13, transition:"all 0.2s", flexShrink:0 }}
-                  onMouseEnter={e=>{ if(!active) e.currentTarget.style.background=hoverBg; }}
-                  onMouseLeave={e=>{ if(!active) e.currentTarget.style.background="transparent"; }}>
-                  <span style={{ fontSize:16 }}>{item.icon}</span>
-                  <span>{item.label}</span>
-                  {hasChild && (
-                    <span style={{ fontSize:9, marginLeft:2, opacity:0.7, transform:isOpen?"rotate(180deg)":"rotate(0deg)", transition:"transform 0.2s" }}>▼</span>
+        {/* Items com scroll oculto */}
+        <div ref={scrollRef} onScroll={checkScroll}
+          style={{ display:"flex", alignItems:"center", gap:2, flex:1,
+            overflowX:"auto", scrollbarWidth:"none", msOverflowStyle:"none" }}>
+          <style>{`.sv-nav::-webkit-scrollbar{display:none}`}</style>
+          <div className="sv-nav" style={{ display:"flex", alignItems:"center", gap:2, minWidth:"max-content", padding:"0 4px" }}>
+            {menuItems.map((item, idx) => {
+              const active   = isActive(item.to);
+              const hasChild = item.children?.length > 0;
+              const isOpen   = openMenu === idx;
+
+              return (
+                <div key={item.to} style={{ position:"relative", flexShrink:0 }}>
+                  <div
+                    data-navitem={idx}
+                    onClick={() => {
+                      if (hasChild) { setOpenMenu(isOpen ? null : idx); }
+                      else { navigate(item.to); setOpenMenu(null); }
+                    }}
+                    style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 11px",
+                      borderRadius:8, cursor:"pointer", whiteSpace:"nowrap", userSelect:"none",
+                      color: active ? "#fff" : "rgba(255,255,255,0.65)",
+                      background: active ? `${theme.primary}` : "transparent",
+                      fontWeight: active ? 600 : 400, fontSize:13, transition:"all 0.18s", flexShrink:0 }}
+                    onMouseEnter={e=>{ if(!active){ e.currentTarget.style.background="rgba(255,255,255,0.1)"; e.currentTarget.style.color="#fff"; }}}
+                    onMouseLeave={e=>{ if(!active){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="rgba(255,255,255,0.65)"; }}}>
+                    <span style={{ fontSize:15 }}>{item.icon}</span>
+                    <span>{item.label}</span>
+                    {hasChild && (
+                      <span style={{ fontSize:8, opacity:0.6, marginLeft:1,
+                        transform:isOpen?"rotate(180deg)":"rotate(0)", transition:"transform 0.2s" }}>▼</span>
+                    )}
+                  </div>
+
+                  {/* Dropdown via portal */}
+                  {hasChild && isOpen && (
+                    <DropdownPortal
+                      items={item.children} anchorIdx={idx}
+                      theme={theme} isGlass={isGlass} border={border}
+                      isActive={isActive}
+                      onSelect={(to) => { navigate(to); setOpenMenu(null); }}
+                    />
                   )}
                 </div>
-
-                {/* Dropdown — fixed abaixo do item, transparente */}
-                {hasChild && isOpen && (
-                  <DropdownPortal
-                    items={item.children}
-                    anchorIdx={idx}
-                    theme={theme} isGlass={isGlass} border={border}
-                    isActive={isActive}
-                    onSelect={(to) => { navigate(to); setOpenMenu(null); }}
-                  />
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
+        {/* Seta direita */}
+        {canScrollR && (
+          <button onClick={() => scrollNav(1)}
+            style={{ background:"none", border:"none", color:"rgba(255,255,255,0.5)",
+              fontSize:16, cursor:"pointer", padding:"0 6px", flexShrink:0,
+              transition:"color 0.2s" }}
+            onMouseEnter={e=>e.currentTarget.style.color="rgba(255,255,255,0.9)"}
+            onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.5)"}>
+            ›
+          </button>
+        )}
+
         {/* Auto-hide toggle + Logout */}
-        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 12px", flexShrink:0 }}>
           <button onClick={toggleAutoHide}
-            title={autoHide ? "Desativar auto-hide" : "Ativar auto-hide"}
-            style={{ background:autoHide?`${theme.primary}22`:"transparent",
-              border:`1px solid ${autoHide?theme.primary:border}`,
-              borderRadius:8, color:autoHide?theme.primary:theme.textMuted,
-              padding:"5px 10px", cursor:"pointer", fontSize:12, fontWeight:600,
-              transition:"all 0.2s" }}>
-            {autoHide ? "👁 Visível no hover" : "📌 Fixo"}
+            title={autoHide ? "Fixar barra" : "Esconder no hover"}
+            style={{ background:"transparent", border:"none",
+              color: autoHide ? theme.primary : "rgba(255,255,255,0.4)",
+              fontSize:16, cursor:"pointer", padding:"4px 6px",
+              transition:"all 0.2s", borderRadius:6 }}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.1)"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            {autoHide ? "📌" : "👁"}
           </button>
           <button onClick={() => { logoutUser(); navigate("/"); }}
-            style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.25)",
-              borderRadius:10, color:"#ef4444", padding:"7px 14px", cursor:"pointer",
-              fontWeight:600, fontSize:13 }}>
-            🚪 Sair
+            style={{ background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.3)",
+              borderRadius:8, color:"#f87171", padding:"5px 12px", cursor:"pointer",
+              fontWeight:600, fontSize:12, transition:"all 0.2s" }}
+            onMouseEnter={e=>{ e.currentTarget.style.background="rgba(239,68,68,0.25)"; }}
+            onMouseLeave={e=>{ e.currentTarget.style.background="rgba(239,68,68,0.15)"; }}>
+            Sair
           </button>
         </div>
       </div>
@@ -305,185 +354,157 @@ function SidebarHorizontal({ menuItems, theme, isGlass }) {
         <div style={{ position:"fixed", inset:0, zIndex:199 }} onClick={() => setOpenMenu(null)}/>
       )}
 
-      <style>{`@keyframes dropIn { from { opacity:0; transform:translateY(-8px) scale(0.97); } to { opacity:1; transform:translateY(0) scale(1); } }`}</style>
+      <style>{`@keyframes dropIn { from { opacity:0; transform:translateY(-10px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }`}</style>
     </>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ESTILO 3 — DOCK arco convexo (ícones projetam para a direita)
-// ESTILO 4 — DOCK arco côncavo (ícones ficam recuados, curva para dentro)
+// ESTILO 3 e 4 — DOCK (arco convexo e côncavo)
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function calcArcPositions(n, convex = true) {
-  const positions = [];
-  const radius    = convex ? 170 : 170;
-  const cx        = convex ? -75 : 75;   // convexo: centro fora à esq; côncavo: centro fora à dir
-  const angleSpan = 90;
-
-  for (let i = 0; i < n; i++) {
-    const angleDeg = n === 1 ? 0 : -angleSpan/2 + (angleSpan * i) / (n - 1);
-    const angleRad = (angleDeg * Math.PI) / 180;
-    positions.push({
-      x: cx + radius * Math.cos(angleRad),
-      y: radius * Math.sin(angleRad),
-    });
-  }
-  return positions;
-}
-
-function DockBubble({ item, cx, cy, R, active, hovered, theme, isGlass, isLogout, onEnter, onLeave, onClick, convex }) {
-  const bgColor = active
-    ? theme.primary
-    : isLogout && hovered ? "rgba(239,68,68,0.85)"
-    : isGlass ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.09)";
-
-  const borderColor = active ? theme.primary
-    : isLogout && hovered ? "rgba(239,68,68,0.6)"
-    : isGlass ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.16)";
-
-  const scale  = hovered ? 1.28 : active ? 1.1 : 1;
-  const lift   = hovered ? (convex ? -6 : 6) : 0;    // convexo salta para direita, côncavo para esquerda
-  const shadow = active
-    ? `0 0 0 6px ${theme.primary}30, 0 8px 28px ${theme.primary}55`
-    : hovered ? "0 10px 36px rgba(0,0,0,0.45)" : "0 3px 12px rgba(0,0,0,0.25)";
-
-  const tooltipLeft = convex ? R*2 + 14 : "auto";
-  const tooltipRight= convex ? "auto"    : R*2 + 14;
-
-  return (
-    <div style={{ position:"absolute", left:cx-R, top:cy-R, width:R*2, height:R*2,
-      pointerEvents:"all", display:"flex", alignItems:"center" }}
-      onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={onClick}>
-
-      {/* Bolinha */}
-      <div style={{ width:R*2, height:R*2, borderRadius:"50%",
-        background:bgColor, border:`2.5px solid ${borderColor}`,
-        display:"flex", alignItems:"center", justifyContent:"center",
-        fontSize:20, cursor:"pointer",
-        transform:`scale(${scale}) translateX(${lift}px)`,
-        transition:"all 0.28s cubic-bezier(0.34,1.56,0.64,1)",
-        boxShadow:shadow,
-        backdropFilter:isGlass?"blur(14px)":undefined,
-        WebkitBackdropFilter:isGlass?"blur(14px)":undefined,
-        flexShrink:0 }}>
-        {isLogout
-          ? <span style={{ fontSize:18 }}>🚪</span>
-          : <Link to={item.to} style={{ textDecoration:"none", display:"flex", alignItems:"center",
-              justifyContent:"center", width:"100%", height:"100%", borderRadius:"50%" }}>
-              <span style={{ fontSize:18 }}>{item.icon}</span>
-            </Link>
-        }
-      </div>
-
-      {/* Tooltip */}
-      {hovered && (
-        <div style={{
-          position:"absolute",
-          left:tooltipLeft, right:tooltipRight,
-          top:"50%", transform:"translateY(-50%)",
-          background:isGlass?"rgba(255,255,255,0.95)":"rgba(10,15,30,0.96)",
-          color:isLogout?"#ef4444":isGlass?"#1e293b":theme.textPrimary,
-          padding:"6px 15px", borderRadius:10, fontSize:14, fontWeight:600,
-          whiteSpace:"nowrap", pointerEvents:"none",
-          border:`1px solid ${isGlass?"rgba(255,255,255,0.7)":theme.borderCard||"rgba(255,255,255,0.12)"}`,
-          boxShadow:"0 4px 20px rgba(0,0,0,0.3)",
-          zIndex:300,
-          animation:"tooltipIn 0.14s ease",
-        }}>
-          {item?.label}
-          {/* Seta */}
-          <div style={{
-            position:"absolute",
-            [convex?"left":"right"]: -5,
-            top:"50%", transform:"translateY(-50%) rotate(45deg)",
-            width:8, height:8,
-            background:isGlass?"rgba(255,255,255,0.95)":"rgba(10,15,30,0.96)",
-            border:`1px solid ${isGlass?"rgba(255,255,255,0.7)":"rgba(255,255,255,0.12)"}`,
-            [convex?"borderRight":"borderLeft"]:"none",
-            borderTop:"none",
-          }}/>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SidebarDock({ menuItems, theme, isGlass, convex = true }) {
   const location   = useLocation();
   const isActive   = p => location.pathname === p;
   const navigate   = useNavigate();
   const [hovered, setHovered] = useState(null);
+  const [vh, setVh] = useState(window.innerHeight);
 
-  const R       = 28;   // raio das bolinhas — MAIORES
-  const GAP     = 14;   // espaçamento extra entre bolinhas
+  useEffect(() => {
+    const onResize = () => setVh(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const R   = 26;   // raio bolinha
+  const GAP = 10;   // espaço extra entre bolinhas
+  const MIN_SPACING = R * 2 + GAP;
 
   const allItems = [...menuItems, { to:"__logout__", icon:"🚪", label:"Sair" }];
   const n        = allItems.length;
-  const pos      = calcArcPositions(n, convex);
 
-  const ys    = pos.map(p => p.y);
-  const xs    = pos.map(p => p.x);
-  const minY  = Math.min(...ys);
-  const maxY  = Math.max(...ys);
-  const minX  = Math.min(...xs);
-  const maxX  = Math.max(...xs);
+  // Calcular posições do arco baseado na viewport atual
+  const totalH    = MIN_SPACING * (n - 1);
+  const startY    = (vh - totalH) / 2;  // centraliza verticalmente na viewport
 
-  // dimensão do container
-  const W = maxX - minX + R*2 + 20;
-  const H = (maxY - minY) + R*2 + GAP*(n-1) + 20;
-
-  // redistribuir Y com espaçamento mínimo garantido
-  const minSpacing  = R*2 + GAP;
-  const totalNeeded = minSpacing * (n-1);
-  const PAD_V       = R + 16;  // padding vertical extra para não cortar topo/base
-  const spreadPositions = pos.map((p, i) => ({
-    x: p.x - minX + R + 8,
-    y: (i / (n-1)) * totalNeeded + PAD_V,
-  }));
-
-  const containerH = totalNeeded + PAD_V * 2;
-  const containerW = maxX - minX + R*2 + 60;
+  // Calcular curvatura do arco: item central projeta mais, extremos recuam
+  const getX = (i) => {
+    const t = (i / (n - 1)) * 2 - 1; // -1 a +1
+    const curve = 1 - t * t;          // parábola: 0 nas pontas, 1 no centro
+    const maxProject = 52;            // quanto o centro projeta
+    const minX = 4;                   // recuo mínimo nas pontas
+    return convex
+      ? minX + curve * maxProject
+      : minX + curve * maxProject;    // côncavo: mesma lógica, posição right
+  };
 
   return (
     <div style={{
       position:"fixed",
       left: convex ? 0 : "auto",
       right: convex ? "auto" : 0,
-      top:"50%", transform:"translateY(-50%)",
+      top: 0, bottom: 0,
       zIndex:200,
-      width:containerW,
-      height:containerH,
+      width: 52 + R * 2 + 60,
       pointerEvents:"none",
       overflow:"visible",
     }}>
       {allItems.map((item, i) => {
-        const { x, y } = spreadPositions[i];
-        const active    = item.to !== "__logout__" && isActive(item.to);
-        const isLogout  = item.to === "__logout__";
-        const label     = item.label || "Sair";
+        const cy      = startY + i * MIN_SPACING + R;
+        const xOffset = getX(i);
+        const active  = item.to !== "__logout__" && isActive(item.to);
+        const isLog   = item.to === "__logout__";
+        const hov     = hovered === i;
+
+        const bgColor = active
+          ? theme.primary
+          : isLog && hov ? "rgba(239,68,68,0.9)"
+          : isGlass ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)";
+
+        const borderColor = active ? theme.primary
+          : isLog && hov ? "rgba(239,68,68,0.7)"
+          : isGlass ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.15)";
+
+        const scale = hov ? 1.3 : active ? 1.1 : 1;
+        const pushX = hov ? (convex ? 10 : -10) : 0;
+        const shadow= active
+          ? `0 0 0 5px ${theme.primary}35, 0 6px 24px ${theme.primary}55`
+          : hov ? "0 8px 30px rgba(0,0,0,0.5)" : "0 2px 10px rgba(0,0,0,0.3)";
+
+        const cx = convex ? xOffset : "auto";
+        const crx= convex ? "auto"  : xOffset;
 
         return (
-          <DockBubble key={item.to}
-            item={{ ...item, label }}
-            cx={x} cy={y} R={R}
-            active={active}
-            hovered={hovered === i}
-            theme={theme} isGlass={isGlass}
-            isLogout={isLogout}
-            convex={convex}
-            onEnter={() => setHovered(i)}
-            onLeave={() => setHovered(null)}
-            onClick={() => { if (isLogout) { logoutUser(); navigate("/"); } }}
-          />
+          <div
+            key={item.to}
+            style={{
+              position:"absolute",
+              left:  convex ? cx : "auto",
+              right: convex ? "auto" : crx,
+              top:   cy - R,
+              width: R * 2, height: R * 2,
+              pointerEvents:"all",
+            }}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+            onClick={() => { if (isLog) { logoutUser(); navigate("/"); } }}
+          >
+            {/* Bolinha */}
+            <div style={{
+              width: R*2, height: R*2, borderRadius:"50%",
+              background: bgColor,
+              border: `2.5px solid ${borderColor}`,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:17, cursor:"pointer",
+              transform: `scale(${scale}) translateX(${pushX}px)`,
+              transition:"all 0.28s cubic-bezier(0.34,1.56,0.64,1)",
+              boxShadow: shadow,
+              backdropFilter: isGlass ? "blur(14px)" : undefined,
+              WebkitBackdropFilter: isGlass ? "blur(14px)" : undefined,
+            }}>
+              {isLog
+                ? <span style={{ fontSize:16 }}>🚪</span>
+                : <Link to={item.to} style={{ textDecoration:"none", display:"flex",
+                    alignItems:"center", justifyContent:"center",
+                    width:"100%", height:"100%", borderRadius:"50%" }}>
+                    <span style={{ fontSize:16 }}>{item.icon}</span>
+                  </Link>
+              }
+            </div>
+
+            {/* Tooltip */}
+            {hov && (
+              <div style={{
+                position:"absolute",
+                left:  convex ? R*2 + 10 : "auto",
+                right: convex ? "auto"   : R*2 + 10,
+                top:"50%", transform:"translateY(-50%)",
+                background:"rgba(10,15,30,0.95)",
+                color: isLog ? "#f87171" : "rgba(255,255,255,0.92)",
+                padding:"5px 13px", borderRadius:9,
+                fontSize:13, fontWeight:600, whiteSpace:"nowrap",
+                pointerEvents:"none",
+                border:"1px solid rgba(255,255,255,0.1)",
+                boxShadow:"0 4px 20px rgba(0,0,0,0.4)",
+                zIndex:300,
+                animation:"tipIn 0.14s ease",
+              }}>
+                {item.label}
+                <div style={{
+                  position:"absolute",
+                  [convex?"left":"right"]: -4,
+                  top:"50%", transform:"translateY(-50%) rotate(45deg)",
+                  width:7, height:7,
+                  background:"rgba(10,15,30,0.95)",
+                  border:"1px solid rgba(255,255,255,0.1)",
+                  [convex?"borderRight":"borderLeft"]:"none",
+                  borderTop:"none",
+                }}/>
+              </div>
+            )}
+          </div>
         );
       })}
-      <style>{`
-        @keyframes tooltipIn {
-          from { opacity:0; transform:translateY(-50%) translateX(${convex?"-6px":"6px"}); }
-          to   { opacity:1; transform:translateY(-50%) translateX(0); }
-        }
-      `}</style>
+      <style>{`@keyframes tipIn { from{opacity:0;} to{opacity:1;} }`}</style>
     </div>
   );
 }
