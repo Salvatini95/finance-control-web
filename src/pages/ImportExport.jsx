@@ -620,21 +620,32 @@ export default function ImportExport() {
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:8 }}>
                     <h3 style={{ color:textMain, margin:0, fontSize:15, fontWeight:600 }}>📄 Preview — {uploadFile?.name}</h3>
                     <div style={{ display:'flex', gap:8 }}>
-                      <span style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600 }}>{importPreview.total_columns} colunas</span>
-                      <span style={{ background:'rgba(22,163,74,0.15)', color:'#4ade80', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600 }}>{importPreview.preview_rows?.length || 0} linhas (preview)</span>
+                      <span style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600 }}>{importPreview.headers?.length || 0} colunas</span>
+                      <span style={{ background:'rgba(22,163,74,0.15)', color:'#4ade80', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600 }}>{importPreview.preview?.length || 0} linhas (preview)</span>
                     </div>
                   </div>
                   <div style={{ overflowX:'auto' }}>
                     <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                      <thead><tr>{importPreview.columns.map(col => (
-                        <th key={col} style={{ padding:'8px 10px', background:isGlass?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.05)', color:textSub, fontWeight:600, textAlign:'left', borderBottom:`1px solid ${cardBorder}`, whiteSpace:'nowrap' }}>{col}</th>
-                      ))}</tr></thead>
-                      <tbody>{(importPreview.preview_rows||[]).map((row,i) => (
-                        <tr key={i}>{importPreview.columns.map(col => (
-                          <td key={col} style={{ padding:'6px 10px', color:textMain, borderBottom:`1px solid ${isGlass?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.04)'}`, whiteSpace:'nowrap', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis' }}>
-                            {row[col] || <span style={{ opacity:0.3 }}>—</span>}
+                      <thead><tr>
+                        {Object.keys(importPreview.preview?.[0]||{}).filter(k=>!k.startsWith('_')).map(col => (
+                          <th key={col} style={{ padding:'8px 10px', background:isGlass?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.05)', color:textSub, fontWeight:600, textAlign:'left', borderBottom:`1px solid ${cardBorder}`, whiteSpace:'nowrap' }}>{col}</th>
+                        ))}
+                        <th style={{ padding:'8px 10px', background:isGlass?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.05)', color:textSub, fontWeight:600, textAlign:'left', borderBottom:`1px solid ${cardBorder}` }}>Duplicata?</th>
+                      </tr></thead>
+                      <tbody>{(importPreview.preview||[]).map((row,i) => (
+                        <tr key={i}>
+                          {Object.entries(row).filter(([k])=>!k.startsWith('_')).map(([k,v]) => (
+                            <td key={k} style={{ padding:'6px 10px', color:textMain, borderBottom:`1px solid ${isGlass?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.04)'}`, whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }}>
+                              {v !== null && v !== '' && v !== undefined ? String(v) : <span style={{ opacity:0.3 }}>—</span>}
+                            </td>
+                          ))}
+                          <td style={{ padding:'6px 10px', borderBottom:`1px solid ${isGlass?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.04)'}` }}>
+                            {row._duplicate
+                              ? <span style={{ background:'rgba(245,158,11,0.15)', color:'#f59e0b', padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700 }}>⚠️ {row._duplicate_name||'Duplicata'}</span>
+                              : <span style={{ background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700 }}>✅ Novo</span>
+                            }
                           </td>
-                        ))}</tr>
+                        </tr>
                       ))}</tbody>
                     </table>
                   </div>
@@ -709,7 +720,7 @@ export default function ImportExport() {
                             style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:`1px solid ${cardBorder}`, background:inputBg, color:textMain, fontSize:13, outline:'none' }}
                           >
                             <option value="">— não importar —</option>
-                            {importPreview.columns.map(col => (
+                            {(importPreview.headers||[]).map(col => (
                               <option key={col} value={col}>{col}</option>
                             ))}
                           </select>
