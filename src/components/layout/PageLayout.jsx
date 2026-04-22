@@ -126,7 +126,21 @@ function useAlerts() {
 function NotificationBell({ alerts, theme, isGlass }) {
   const [open, setOpen] = useState(false);
   const ref             = useRef(null);
+  const dragging        = useRef(false);
+  const dragStart       = useRef({ mx:0, my:0, bx:0, by:0 });
+  const didDrag         = useRef(false);
 
+  const BELL_KEY = "sv_bell_pos";
+  const getInitialPos = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem(BELL_KEY));
+      if (s) return s;
+    } catch {}
+    return { x: window.innerWidth - 60, y: 14 };
+  };
+  const [pos, setPos] = useState(getInitialPos);
+
+  // Fechar ao clicar fora
   useEffect(() => {
     function handleClick(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
@@ -134,6 +148,62 @@ function NotificationBell({ alerts, theme, isGlass }) {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  const onMouseDown = (e) => {
+    e.preventDefault();
+    dragging.current  = true;
+    didDrag.current   = false;
+    dragStart.current = { mx: e.clientX, my: e.clientY, bx: pos.x, by: pos.y };
+
+    const onMove = (e) => {
+      if (!dragging.current) return;
+      const dx = e.clientX - dragStart.current.mx;
+      const dy = e.clientY - dragStart.current.my;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag.current = true;
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth  - 44, dragStart.current.bx + dx)),
+        y: Math.max(0, Math.min(window.innerHeight - 44, dragStart.current.by + dy)),
+      });
+    };
+
+    const onUp = () => {
+      dragging.current = false;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup",   onUp);
+      setPos(p => { localStorage.setItem(BELL_KEY, JSON.stringify(p)); return p; });
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup",   onUp);
+  };
+
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    dragging.current  = true;
+    didDrag.current   = false;
+    dragStart.current = { mx: t.clientX, my: t.clientY, bx: pos.x, by: pos.y };
+
+    const onMove = (e) => {
+      const t = e.touches[0];
+      const dx = t.clientX - dragStart.current.mx;
+      const dy = t.clientY - dragStart.current.my;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag.current = true;
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth  - 44, dragStart.current.bx + dx)),
+        y: Math.max(0, Math.min(window.innerHeight - 44, dragStart.current.by + dy)),
+      });
+    };
+
+    const onUp = () => {
+      dragging.current = false;
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend",  onUp);
+      setPos(p => { localStorage.setItem(BELL_KEY, JSON.stringify(p)); return p; });
+    };
+
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend",  onUp);
+  };
 
   const colorMap = {
     error:   { bg:"rgba(239,68,68,0.12)",   border:"rgba(239,68,68,0.3)",   text:"#ef4444" },
@@ -143,21 +213,25 @@ function NotificationBell({ alerts, theme, isGlass }) {
   };
 
   return (
-    <div ref={ref} style={{ position:"fixed", top:14, right:16, zIndex:400 }}>
+    <div ref={ref} style={{ position:"fixed", left:pos.x, top:pos.y, zIndex:400 }}>
       <button
-        onClick={() => setOpen(!open)}
+        onMouseDown={onMouseDown}
+        onTouchStart={onTouchStart}
+        onClick={() => { if (!didDrag.current) setOpen(o => !o); }}
         style={{
           position:"relative",
           background: isGlass ? "rgba(255,255,255,0.35)" : "rgba(15,23,42,0.7)",
           backdropFilter:"blur(12px)", WebkitBackdropFilter:"blur(12px)",
           border: `1px solid ${isGlass?"rgba(255,255,255,0.5)":"rgba(255,255,255,0.1)"}`,
           borderRadius:12, width:44, height:44,
-          cursor:"pointer", fontSize:20,
+          cursor: dragging.current ? "grabbing" : "grab",
+          fontSize:20,
           display:"flex", alignItems:"center", justifyContent:"center",
           boxShadow: isGlass?"0 4px 16px rgba(0,0,0,0.1)":"0 4px 16px rgba(0,0,0,0.4)",
-          transition:"transform 0.2s",
+          transition: dragging.current ? "none" : "transform 0.2s",
+          userSelect:"none",
         }}
-        onMouseEnter={e => e.currentTarget.style.transform="scale(1.08)"}
+        onMouseEnter={e => { if (!dragging.current) e.currentTarget.style.transform="scale(1.08)"; }}
         onMouseLeave={e => e.currentTarget.style.transform="scale(1)"}
       >
         🔔
