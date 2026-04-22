@@ -147,6 +147,8 @@ export default function ImportExport() {
   const isGlass = themeId === 'glass' || themeId === 'gray';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab]     = useState('export');
+  const [history, setHistory]           = useState([]);
+  const [histLoading, setHistLoading]   = useState(false);
 
   // ── Export state ──
   const [exportDates, setExportDates]     = useState({ from: '', to: '' });
@@ -172,6 +174,24 @@ export default function ImportExport() {
   const fileRef = useRef();
 
   const token = () => localStorage.getItem('token');
+
+  const fetchHistory = async () => {
+    setHistLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/import/history`, {
+        headers: { Authorization: `Bearer ${token()}` }
+      });
+      const data = await res.json();
+      setHistory(Array.isArray(data) ? data : []);
+    } catch { }
+    finally { setHistLoading(false); }
+  };
+
+  // Carrega histórico ao abrir a aba
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'history') fetchHistory();
+  };
   const role  = localStorage.getItem('role') || 'viewer';
 
   // Modal relatório de produtos
@@ -360,6 +380,13 @@ export default function ImportExport() {
     // Não zera uploadFile — usuário pode reanalizar o mesmo arquivo
   };
 
+  // Carrega histórico ao trocar de aba
+  const TABS = [
+    { key: 'export',  label: '⬇️ Exportar' },
+    { key: 'import',  label: '⬆️ Importar' },
+    { key: 'history', label: '🕓 Histórico' },
+  ];
+
   const tabBtn = (active) => ({
     padding: '9px 26px', borderRadius: 10, border: 'none', cursor: 'pointer',
     fontWeight: 600, fontSize: 14, transition: 'all 0.2s',
@@ -412,8 +439,9 @@ export default function ImportExport() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 6, padding: 6, borderRadius: 14, background: cardBg, border: `1px solid ${cardBorder}`, marginBottom: 28, width: 'fit-content' }}>
-          <button style={tabBtn(activeTab === 'export')} onClick={() => setActiveTab('export')}>⬇️ Exportar</button>
-          <button style={tabBtn(activeTab === 'import')} onClick={() => setActiveTab('import')}>⬆️ Importar</button>
+          <button style={tabBtn(activeTab === 'export')}  onClick={() => handleTabChange('export')}>⬇️ Exportar</button>
+          <button style={tabBtn(activeTab === 'import')}  onClick={() => handleTabChange('import')}>⬆️ Importar</button>
+          <button style={tabBtn(activeTab === 'history')} onClick={() => handleTabChange('history')}>🕓 Histórico</button>
         </div>
 
         {/* ═══════════ EXPORTAÇÃO ═══════════ */}
@@ -840,6 +868,99 @@ export default function ImportExport() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ═══════════ HISTÓRICO ═══════════ */}
+        {activeTab === 'history' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+            {/* Header */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <h3 style={{ color:textMain, margin:0, fontSize:16, fontWeight:700 }}>🕓 Histórico de Importações e Exportações</h3>
+                <p style={{ color:textSub, margin:'4px 0 0', fontSize:13 }}>Registro de todas as operações realizadas</p>
+              </div>
+              <button onClick={fetchHistory} disabled={histLoading}
+                style={{ padding:'8px 18px', borderRadius:10, border:`1px solid ${cardBorder}`, background:'transparent', color:textSub, cursor:'pointer', fontWeight:600, fontSize:13 }}>
+                {histLoading ? '⏳' : '🔄 Atualizar'}
+              </button>
+            </div>
+
+            {histLoading && (
+              <div style={{ textAlign:'center', color:textSub, padding:'40px 0' }}>Carregando histórico...</div>
+            )}
+
+            {!histLoading && history.length === 0 && (
+              <div style={{ ...card, textAlign:'center', padding:'60px 20px' }}>
+                <div style={{ fontSize:'2.5rem', marginBottom:12 }}>📭</div>
+                <div style={{ color:textMain, fontWeight:600, marginBottom:6 }}>Nenhum registro ainda</div>
+                <div style={{ color:textSub, fontSize:13 }}>As importações e exportações aparecerão aqui</div>
+              </div>
+            )}
+
+            {!histLoading && history.map(log => {
+              const statusColor = log.status === 'success' ? '#4ade80' : log.status === 'warning' ? '#f59e0b' : '#f87171';
+              const statusBg    = log.status === 'success' ? 'rgba(34,197,94,0.1)' : log.status === 'warning' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
+              const statusLabel = log.status === 'success' ? '✅ Sucesso' : log.status === 'warning' ? '⚠️ Parcial' : '❌ Falhou';
+              return (
+                <div key={log.id} style={{ ...card, padding:'18px 20px' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:10 }}>
+                    {/* Lado esquerdo */}
+                    <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+                      <div style={{ fontSize:'1.8rem', flexShrink:0 }}>
+                        {log.type === 'import' ? '📥' : '📤'}
+                      </div>
+                      <div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
+                          <span style={{ fontWeight:700, color:textMain, fontSize:14 }}>{log.type_label}</span>
+                          <span style={{ background:`${statusColor}22`, color:statusColor, padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700 }}>{statusLabel}</span>
+                          <span style={{ background:isGlass?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.06)', color:textSub, padding:'2px 8px', borderRadius:6, fontSize:11 }}>{log.entity_label}</span>
+                          {log.sistema && log.sistema !== 'generico' && (
+                            <span style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8', padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:600 }}>{log.sistema_label}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize:12, color:textSub }}>
+                          📄 {log.filename} · {log.created_at}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Lado direito — contadores */}
+                    <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+                      {[
+                        { label:'Total',     value:log.total,   color:textSub    },
+                        { label:'Criados',   value:log.created, color:'#4ade80'  },
+                        { label:'Atualizados',value:log.updated,color:'#60a5fa'  },
+                        { label:'Ignorados', value:log.skipped, color:'#f59e0b'  },
+                        { label:'Erros',     value:log.errors,  color:'#f87171'  },
+                      ].map(s => (
+                        <div key={s.label} style={{ textAlign:'center', minWidth:52 }}>
+                          <div style={{ fontSize:16, fontWeight:800, color:s.color }}>{s.value}</div>
+                          <div style={{ fontSize:10, color:textSub, textTransform:'uppercase', letterSpacing:'0.5px' }}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Erros detalhados */}
+                  {log.errors_log?.length > 0 && (
+                    <div style={{ marginTop:12, borderTop:`1px solid ${cardBorder}`, paddingTop:10 }}>
+                      <div style={{ fontSize:12, color:'#f87171', fontWeight:600, marginBottom:6 }}>Erros:</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {log.errors_log.slice(0,5).map((err, i) => (
+                          <div key={i} style={{ fontSize:11, color:textSub, background:'rgba(239,68,68,0.06)', borderRadius:6, padding:'4px 8px' }}>
+                            #{i+1} {typeof err === 'string' ? err : JSON.stringify(err)}
+                          </div>
+                        ))}
+                        {log.errors_log.length > 5 && (
+                          <div style={{ fontSize:11, color:textSub, fontStyle:'italic' }}>... e mais {log.errors_log.length - 5} erros</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
