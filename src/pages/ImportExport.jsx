@@ -814,22 +814,17 @@ export default function ImportExport() {
                 {/* Relatório de erros */}
                 {importResult.errors?.length > 0 && (
                   <div style={{ ...card, border:'1px solid rgba(239,68,68,0.3)', background:isGlass?'rgba(239,68,68,0.08)':'rgba(239,68,68,0.05)' }}>
-                    <h4 style={{ color:'#f87171', margin:'0 0 12px', fontSize:14, fontWeight:700 }}>❌ Relatório de Erros ({importResult.errors.length} linhas ignoradas)</h4>
-                    <div style={{ overflowX:'auto' }}>
-                      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                        <thead><tr>
-                          {['Linha','Campo','Motivo'].map(h => (
-                            <th key={h} style={{ padding:'8px 12px', background:isGlass?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.05)', color:textSub, fontWeight:600, textAlign:'left', borderBottom:`1px solid ${cardBorder}`, whiteSpace:'nowrap' }}>{h}</th>
-                          ))}
-                        </tr></thead>
-                        <tbody>{importResult.errors.map((err, i) => (
-                          <tr key={i}>
-                            <td style={{ padding:'7px 12px', color:'#f87171', fontWeight:700, borderBottom:`1px solid ${cardBorder}` }}>#{err.row}</td>
-                            <td style={{ padding:'7px 12px', color:textMain, borderBottom:`1px solid ${cardBorder}` }}>{err.field}</td>
-                            <td style={{ padding:'7px 12px', color:textSub,  borderBottom:`1px solid ${cardBorder}` }}>{err.message}</td>
-                          </tr>
-                        ))}</tbody>
-                      </table>
+                    <h4 style={{ color:'#f87171', margin:'0 0 12px', fontSize:14, fontWeight:700 }}>❌ Erros encontrados ({importResult.errors.length})</h4>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      {importResult.errors.map((err, i) => {
+                        const msg = typeof err === 'string' ? err : `Linha ${err.row}: ${err.field ? err.field + ' — ' : ''}${err.message || JSON.stringify(err)}`;
+                        return (
+                          <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 12px', background:'rgba(239,68,68,0.08)', borderRadius:8, border:'1px solid rgba(239,68,68,0.2)' }}>
+                            <span style={{ color:'#f87171', fontWeight:700, fontSize:12, flexShrink:0 }}>#{i+1}</span>
+                            <span style={{ color:textMain, fontSize:12 }}>{msg}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
