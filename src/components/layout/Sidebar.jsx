@@ -173,199 +173,173 @@ function SidebarHorizontal({ menuItems, theme, isGlass }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ESTILO 3 — DOCK (bolinhas meia lua, hover eleva e abre label)
+// ESTILO 3 — DOCK (arco/meia lua na lateral esquerda)
 // ═══════════════════════════════════════════════════════════════════════════════
-function DockItem({ item, active, theme, isGlass }) {
-  const [hovered, setHovered] = useState(false);
 
-  const activeBg  = isGlass ? "rgba(255,255,255,0.5)"  : theme.primary;
-  const hoverBg   = isGlass ? "rgba(255,255,255,0.35)" : `${theme.primary}44`;
-  const defaultBg = isGlass ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.06)";
-  const border    = isGlass ? "rgba(255,255,255,0.6)"  : active ? theme.primary : "rgba(255,255,255,0.1)";
-
-  return (
-    <div style={{ position:"relative", display:"flex", alignItems:"center" }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Tooltip label — aparece à direita */}
-      <div style={{
-        position:"absolute", left:62, top:"50%", transform:"translateY(-50%)",
-        background:isGlass?"rgba(255,255,255,0.9)":"rgba(15,23,42,0.95)",
-        color:isGlass?"#1e293b":theme.textPrimary,
-        padding:"6px 14px", borderRadius:10, fontSize:13, fontWeight:600,
-        whiteSpace:"nowrap", pointerEvents:"none",
-        border:`1px solid ${isGlass?"rgba(255,255,255,0.8)":theme.borderCard}`,
-        boxShadow:"0 4px 20px rgba(0,0,0,0.3)",
-        opacity:hovered?1:0, transition:"opacity 0.15s, transform 0.15s",
-        transform:`translateY(-50%) translateX(${hovered?0:-6}px)`,
-        zIndex:300,
-      }}>
-        {item.label}
-        {/* seta */}
-        <div style={{ position:"absolute", left:-5, top:"50%", transform:"translateY(-50%) rotate(45deg)",
-          width:8, height:8,
-          background:isGlass?"rgba(255,255,255,0.9)":"rgba(15,23,42,0.95)",
-          border:`1px solid ${isGlass?"rgba(255,255,255,0.8)":theme.borderCard}`,
-          borderRight:"none", borderTop:"none" }}/>
-      </div>
-
-      {/* Bolinha */}
-      <Link to={item.to} style={{ textDecoration:"none" }}>
-        <div style={{
-          width:46, height:46, borderRadius:"50%", display:"flex", alignItems:"center",
-          justifyContent:"center", fontSize:20, cursor:"pointer",
-          background:active?activeBg:hovered?hoverBg:defaultBg,
-          border:`2px solid ${border}`,
-          boxShadow:active
-            ? `0 0 0 4px ${theme.primary}33, 0 6px 20px ${theme.primary}44`
-            : hovered ? `0 8px 24px rgba(0,0,0,0.3)` : "0 2px 8px rgba(0,0,0,0.2)",
-          transform:hovered?"translateY(-4px) scale(1.08)":"translateY(0) scale(1)",
-          transition:"all 0.22s cubic-bezier(0.34,1.56,0.64,1)",
-          backdropFilter:isGlass?"blur(12px)":undefined,
-        }}>
-          {item.icon}
-        </div>
-      </Link>
-    </div>
-  );
+function calcArcPositions(n, radius = 160, cx = -80, angleSpan = 100) {
+  const positions = [];
+  for (let i = 0; i < n; i++) {
+    const angleDeg = n === 1 ? 0 : -angleSpan / 2 + (angleSpan * i) / (n - 1);
+    const angleRad = (angleDeg * Math.PI) / 180;
+    positions.push({
+      x: cx + radius * Math.cos(angleRad),
+      y: radius * Math.sin(angleRad),
+    });
+  }
+  return positions;
 }
 
 function SidebarDock({ menuItems, theme, isGlass }) {
   const location = useLocation();
   const isActive = p => location.pathname === p;
   const navigate = useNavigate();
-  const [logHover, setLogHover] = useState(false);
+  const [hoveredIdx, setHoveredIdx] = useState(null);
 
-  const trackBg  = isGlass ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)";
-  const border   = isGlass ? "rgba(255,255,255,0.3)"  : "rgba(255,255,255,0.08)";
+  const n      = menuItems.length + 1; // +1 para o logout
+  const pos    = calcArcPositions(n);
+  const allItems = [...menuItems, { to: "__logout__", icon: "🚪", label: "Sair" }];
+
+  // altura total necessária para o arco
+  const ys     = pos.map(p => p.y);
+  const minY   = Math.min(...ys);
+  const maxY   = Math.max(...ys);
+  const height = maxY - minY;
+  const maxX   = Math.max(...pos.map(p => p.x));
+
+  const RADIUS  = 22;  // raio de cada bolinha
+  const PAD     = 12;  // padding lateral
 
   return (
     <div style={{
-      position:"fixed", left:12, top:"50%", transform:"translateY(-50%)",
-      zIndex:200, display:"flex", flexDirection:"column", alignItems:"center",
-      gap:8, padding:"14px 10px",
-      background:trackBg,
-      backdropFilter:isGlass?"blur(20px) saturate(180%)":"blur(16px)",
-      WebkitBackdropFilter:isGlass?"blur(20px) saturate(180%)":"blur(16px)",
-      border:`1px solid ${border}`,
-      borderRadius:32,
-      boxShadow:isGlass
-        ? "0 8px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.5)"
-        : "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)",
+      position: "fixed",
+      left: 0,
+      top: "50%",
+      transform: "translateY(-50%)",
+      zIndex: 200,
+      width: maxX + RADIUS + PAD + 20,
+      height: height + RADIUS * 2 + 16,
+      pointerEvents: "none",
     }}>
-      {/* Logo mini */}
-      <div style={{ fontSize:18, marginBottom:4 }}>💎</div>
-      <div style={{ width:24, height:1, background:border, marginBottom:4 }}/>
+      {allItems.map((item, i) => {
+        const { x, y } = pos[i];
+        const active   = item.to !== "__logout__" && isActive(item.to);
+        const hovered  = hoveredIdx === i;
+        const isLogout = item.to === "__logout__";
 
-      {/* Items */}
-      {menuItems.map(item => (
-        <DockItem key={item.to} item={item} active={isActive(item.to)} theme={theme} isGlass={isGlass}/>
-      ))}
+        const cx = x + RADIUS;
+        const cy = y - minY + RADIUS + 8;
 
-      {/* Divisor + logout */}
-      <div style={{ width:24, height:1, background:border, marginTop:4 }}/>
-      <div style={{ position:"relative", display:"flex", alignItems:"center" }}
-        onMouseEnter={() => setLogHover(true)}
-        onMouseLeave={() => setLogHover(false)}
-      >
-        <div style={{
-          position:"absolute", left:62, top:"50%", transform:"translateY(-50%)",
-          background:isGlass?"rgba(255,255,255,0.9)":"rgba(15,23,42,0.95)",
-          color:"#ef4444", padding:"6px 14px", borderRadius:10, fontSize:13, fontWeight:600,
-          whiteSpace:"nowrap", pointerEvents:"none",
-          border:`1px solid rgba(239,68,68,0.3)`,
-          opacity:logHover?1:0, transition:"opacity 0.15s",
-          zIndex:300,
-        }}>Sair</div>
-        <div onClick={() => { logoutUser(); navigate("/"); }}
-          style={{
-            width:46, height:46, borderRadius:"50%", display:"flex", alignItems:"center",
-            justifyContent:"center", fontSize:20, cursor:"pointer",
-            background:logHover?"rgba(239,68,68,0.2)":isGlass?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.06)",
-            border:`2px solid ${logHover?"rgba(239,68,68,0.5)":"rgba(255,255,255,0.1)"}`,
-            transform:logHover?"translateY(-4px) scale(1.08)":"scale(1)",
-            transition:"all 0.22s cubic-bezier(0.34,1.56,0.64,1)",
-            boxShadow:logHover?"0 8px 24px rgba(239,68,68,0.3)":"0 2px 8px rgba(0,0,0,0.2)",
-          }}>
-          🚪
-        </div>
-      </div>
+        const bgColor = active
+          ? theme.primary
+          : isLogout && hovered
+            ? "rgba(239,68,68,0.85)"
+            : isGlass
+              ? "rgba(255,255,255,0.18)"
+              : "rgba(255,255,255,0.07)";
+
+        const borderColor = active
+          ? theme.primary
+          : isLogout && hovered
+            ? "rgba(239,68,68,0.6)"
+            : isGlass
+              ? "rgba(255,255,255,0.4)"
+              : "rgba(255,255,255,0.12)";
+
+        const scale   = hovered ? 1.22 : active ? 1.08 : 1;
+        const shadow  = active
+          ? `0 0 0 5px ${theme.primary}30, 0 6px 20px ${theme.primary}50`
+          : hovered
+            ? "0 8px 28px rgba(0,0,0,0.35)"
+            : "0 2px 8px rgba(0,0,0,0.2)";
+
+        return (
+          <div
+            key={item.to}
+            style={{
+              position: "absolute",
+              left: cx - RADIUS,
+              top:  cy - RADIUS,
+              width:  RADIUS * 2,
+              height: RADIUS * 2,
+              pointerEvents: "all",
+              display: "flex",
+              alignItems: "center",
+            }}
+            onMouseEnter={() => setHoveredIdx(i)}
+            onMouseLeave={() => setHoveredIdx(null)}
+            onClick={() => {
+              if (isLogout) { logoutUser(); navigate("/"); }
+            }}
+          >
+            {/* Bolinha */}
+            <div style={{
+              width:  RADIUS * 2,
+              height: RADIUS * 2,
+              borderRadius: "50%",
+              background: bgColor,
+              border: `2px solid ${borderColor}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 17,
+              cursor: "pointer",
+              transform: `scale(${scale}) translateY(${hovered ? -4 : 0}px)`,
+              transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+              boxShadow: shadow,
+              backdropFilter: isGlass ? "blur(14px)" : undefined,
+              WebkitBackdropFilter: isGlass ? "blur(14px)" : undefined,
+              flexShrink: 0,
+            }}>
+              {isLogout
+                ? <span style={{ fontSize: 16 }}>🚪</span>
+                : <Link to={item.to} style={{ textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", borderRadius: "50%" }}>
+                    <span style={{ fontSize: 16 }}>{item.icon}</span>
+                  </Link>
+              }
+            </div>
+
+            {/* Tooltip à direita */}
+            {hovered && (
+              <div style={{
+                position: "absolute",
+                left: RADIUS * 2 + 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: isGlass ? "rgba(255,255,255,0.92)" : "rgba(10,15,30,0.95)",
+                color: isLogout ? "#ef4444" : isGlass ? "#1e293b" : theme.textPrimary,
+                padding: "5px 13px",
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                border: `1px solid ${isGlass ? "rgba(255,255,255,0.7)" : theme.borderCard || "rgba(255,255,255,0.1)"}`,
+                boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
+                zIndex: 300,
+                animation: "fadeIn 0.12s ease",
+              }}>
+                {item.label}
+                {/* seta */}
+                <div style={{
+                  position: "absolute",
+                  left: -5,
+                  top: "50%",
+                  transform: "translateY(-50%) rotate(45deg)",
+                  width: 8,
+                  height: 8,
+                  background: isGlass ? "rgba(255,255,255,0.92)" : "rgba(10,15,30,0.95)",
+                  border: `1px solid ${isGlass ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.1)"}`,
+                  borderRight: "none",
+                  borderTop: "none",
+                }}/>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(-50%) translateX(-4px); } to { opacity:1; transform:translateY(-50%) translateX(0); } }`}</style>
     </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MOBILE — hamburguer (igual ao atual, independente do estilo)
-// ═══════════════════════════════════════════════════════════════════════════════
-function SidebarMobile({ menuItems, theme, isGlass }) {
-  const location   = useLocation();
-  const isActive   = p => location.pathname === p;
-  const navigate   = useNavigate();
-  const [open, setOpen] = useState(false);
-
-  const backdrop = isGlass ? "blur(24px) saturate(160%)" : "blur(18px)";
-  const border   = isGlass ? "rgba(255,255,255,0.4)" : theme.borderCard;
-
-  return (
-    <>
-      <button onClick={() => setOpen(!open)}
-        style={{ position:"fixed", top:16, left:16, zIndex:200,
-          background:isGlass?"rgba(255,255,255,0.35)":theme.bgSecondary,
-          backdropFilter:backdrop, WebkitBackdropFilter:backdrop,
-          border:`1px solid ${border}`, borderRadius:10,
-          color:theme.textPrimary, fontSize:20, width:44, height:44,
-          cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-        {open ? "✕" : "☰"}
-      </button>
-
-      {open && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:150, backdropFilter:"blur(2px)" }}
-          onClick={() => setOpen(false)}/>
-      )}
-
-      <div style={{ position:"fixed", top:0, left:0, bottom:0, width:260,
-        background:isGlass?"rgba(255,255,255,0.22)":theme.bgSecondary,
-        backdropFilter:backdrop, WebkitBackdropFilter:backdrop,
-        borderRight:`1px solid ${border}`, zIndex:160,
-        display:"flex", flexDirection:"column",
-        transition:"transform 0.3s ease",
-        transform:open?"translateX(0)":"translateX(-100%)",
-        boxShadow:isGlass?"8px 0 32px rgba(0,0,0,0.15)":"8px 0 32px rgba(0,0,0,0.5)" }}>
-
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-          padding:"20px 20px 16px", borderBottom:`1px solid ${border}`, flexShrink:0 }}>
-          <span style={{ fontSize:18, fontWeight:700, color:theme.textPrimary, letterSpacing:1 }}>SV Finance</span>
-          <button onClick={() => setOpen(false)}
-            style={{ background:`${theme.primary}22`, border:"none", color:theme.textPrimary,
-              borderRadius:8, width:32, height:32, cursor:"pointer", fontSize:14 }}>✕</button>
-        </div>
-
-        <div style={{ flex:1, padding:"16px 12px", display:"flex", flexDirection:"column", gap:6, overflowY:"auto" }}>
-          {menuItems.map(item => (
-            <Link key={item.to} to={item.to} onClick={() => setOpen(false)}
-              style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 16px",
-                borderRadius:12, textDecoration:"none", color:theme.textPrimary,
-                fontSize:15, fontWeight:500, transition:"all 0.2s",
-                background:isActive(item.to)?(isGlass?"rgba(255,255,255,0.35)":theme.sidebarActive):"transparent",
-                border:isActive(item.to)?`1px solid ${isGlass?"rgba(255,255,255,0.5)":theme.sidebarBorder}`:"1px solid transparent" }}>
-              <span style={{ fontSize:20 }}>{item.icon}</span>
-              <span style={{ fontWeight:isActive(item.to)?600:400 }}>{item.label}</span>
-            </Link>
-          ))}
-        </div>
-
-        <div style={{ padding:12, flexShrink:0 }}>
-          <button onClick={() => { logoutUser(); navigate("/"); }}
-            style={{ width:"100%", padding:"14px 16px",
-              background:isGlass?"rgba(239,68,68,0.12)":"rgba(239,68,68,0.1)",
-              border:"1px solid rgba(239,68,68,0.25)", borderRadius:12,
-              color:"#ef4444", fontSize:15, fontWeight:600, cursor:"pointer", textAlign:"left" }}>
-            🚪 Sair
-          </button>
-        </div>
-      </div>
-    </>
   );
 }
 
