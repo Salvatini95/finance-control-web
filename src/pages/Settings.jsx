@@ -3,7 +3,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import logoGif from "../assets/video.gif";
-import { getSidebarStyle, setSidebarStyleLS } from "../components/layout/Sidebar";
+import { getSidebarStyle, setSidebarStyleLS, getAutoHide, setAutoHideLS } from "../components/layout/Sidebar";
 
 const API   = "https://finance-control-api-production.up.railway.app/api";
 const token = () => localStorage.getItem("token");
@@ -382,11 +382,12 @@ export default function Settings() {
             <div style={card}>
               <h2 style={{ fontSize:"1rem", fontWeight:700, margin:"0 0 6px", color:theme.textPrimary }}>🗂️ Estilo do Sidebar</h2>
               <p style={{ color:theme.textMuted, fontSize:"0.82rem", margin:"0 0 24px" }}>Escolha como o menu de navegação é exibido. Salvo automaticamente.</p>
-              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)", gap:16 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)", gap:16 }}>
                 {[
-                  { id:"vertical",   name:"Vertical",   desc:"Sidebar lateral retrátil que expande ao passar o mouse" },
-                  { id:"horizontal", name:"Horizontal", desc:"Barra de navegação fixada no topo da página" },
-                  { id:"dock",       name:"Dock",       desc:"Bolinhas flutuantes na lateral — hover revela o nome" },
+                  { id:"vertical",      name:"Vertical",      desc:"Sidebar lateral retrátil que expande ao passar o mouse" },
+                  { id:"horizontal",    name:"Horizontal",    desc:"Barra no topo com dropdown — suporte a auto-hide no hover" },
+                  { id:"dock",          name:"Dock Convexo",  desc:"Bolinhas em arco projetando para fora — hover salta" },
+                  { id:"dock_concave",  name:"Dock Côncavo",  desc:"Bolinhas em arco recuado — aparece na lateral direita" },
                 ].map(s => {
                   const isAct = sidebarStyle === s.id;
                   return (
