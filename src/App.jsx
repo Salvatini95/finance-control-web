@@ -14,6 +14,7 @@ import Team         from "./pages/Team";
 import Goals        from "./pages/Goals";
 import ImportExport from "./pages/ImportExport";
 import Reports      from "./pages/Reports";
+import Commissions  from "./pages/Commissions";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -61,6 +62,11 @@ function App() {
           <Route path="/import-export" element={
             <ProtectedRoute roles={["admin", "financial"]}>
               <ImportExport />
+            </ProtectedRoute>
+          } />
+          <Route path="/commissions" element={
+            <ProtectedRoute roles={["admin", "financial", "seller"]}>
+              <Commissions />
             </ProtectedRoute>
           } />
         </Routes>
