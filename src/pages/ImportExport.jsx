@@ -1,500 +1,1057 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import PageLayout from '../components/layout/PageLayout';
 import Sidebar from '../components/layout/Sidebar';
 import { useTheme } from '../contexts/ThemeContext';
+import ProductReportModal from '../components/ProductReportModal';
 
 const BASE_URL = 'https://api.svfinance.com.br/api';
 
-const TYPE_LABELS = {
-  percent_total:  { label: '% do Total',  icon: '📊', desc: 'Percentual sobre valor total da venda' },
-  percent_profit: { label: '% do Lucro',  icon: '💹', desc: 'Percentual sobre lucro estimado'       },
-  fixed:          { label: 'Valor Fixo',  icon: '🔒', desc: 'Valor fixo por venda concluída'        },
+const MODULES = [
+  { key: 'transactions', label: 'Transações',  icon: '💰', description: 'Receitas e despesas',     hasTemplate: true,  supportsDateFilter: true,  canImport: true,  adminOnly: false },
+  { key: 'bills',        label: 'Contas',       icon: '📄', description: 'Contas a pagar/receber',  hasTemplate: true,  supportsDateFilter: true,  canImport: true,  adminOnly: false },
+  { key: 'clients',      label: 'Clientes',     icon: '👥', description: 'Base de clientes',        hasTemplate: true,  supportsDateFilter: true,  canImport: true,  adminOnly: false },
+  { key: 'products',     label: 'Produtos',     icon: '📦', description: 'Produtos e serviços',     hasTemplate: true,  supportsDateFilter: false, canImport: true,  adminOnly: false },
+  { key: 'quotes',       label: 'Orçamentos',   icon: '🧾', description: 'Orçamentos emitidos',     hasTemplate: false, supportsDateFilter: true,  canImport: false, adminOnly: false },
+  { key: 'sales',        label: 'Vendas',       icon: '🛒', description: 'Pedidos e OS',            hasTemplate: false, supportsDateFilter: true,  canImport: false, adminOnly: false },
+  { key: 'team',         label: 'Equipe',       icon: '👤', description: 'Membros da equipe',       hasTemplate: true,  supportsDateFilter: false, canImport: true,  adminOnly: true  },
+];
+
+// Campos esperados por módulo com label amigável
+const MODULE_FIELDS = {
+  transactions: [
+    { key: 'type',         label: 'Tipo',             required: true,  hint: 'receita / despesa'     },
+    { key: 'description',  label: 'Descrição',        required: true,  hint: null                    },
+    { key: 'amount',       label: 'Valor',            required: true,  hint: null                    },
+    { key: 'category',     label: 'Categoria',        required: false, hint: null                    },
+    { key: 'date',         label: 'Data',             required: false, hint: 'dd/mm/aaaa'            },
+    { key: 'source',       label: 'Origem',           required: false, hint: 'venda / os / manual'   },
+    { key: 'client',       label: 'Cliente (venda)',  required: false, hint: 'nome do cliente'       },
+    { key: 'item_name',    label: 'Produto (venda)',  required: false, hint: 'nome do produto/serviço'},
+    { key: 'item_qty',     label: 'Quantidade',       required: false, hint: null                    },
+    { key: 'item_price',   label: 'Preço Unitário',   required: false, hint: null                    },
+    { key: 'order_number', label: 'Nº do Pedido/OS',  required: false, hint: 'ex: PED-2025-001'      },
+  ],
+  bills: [
+    { key: 'type',        label: 'Tipo',        required: true  },
+    { key: 'description', label: 'Descrição',   required: true  },
+    { key: 'amount',      label: 'Valor',       required: true  },
+    { key: 'due_date',    label: 'Vencimento',  required: true  },
+    { key: 'category',    label: 'Categoria',   required: false },
+    { key: 'status',      label: 'Status',      required: false },
+    { key: 'notes',       label: 'Observações', required: false },
+  ],
+  clients: [
+    { key: 'name',     label: 'Nome',        required: true  },
+    { key: 'email',    label: 'Email',       required: false },
+    { key: 'phone',    label: 'Telefone',    required: false },
+    { key: 'document', label: 'Documento',   required: false },
+    { key: 'address',  label: 'Endereço',    required: false },
+    { key: 'notes',    label: 'Observações', required: false },
+  ],
+  products: [
+    { key: 'name',        label: 'Nome',           required: true  },
+    { key: 'sku',         label: 'SKU',            required: false },
+    { key: 'type',        label: 'Tipo',           required: false },
+    { key: 'category',    label: 'Categoria',      required: false },
+    { key: 'price',       label: 'Preço de Venda', required: false },
+    { key: 'cost',        label: 'Custo',          required: false },
+    { key: 'stock_qty',   label: 'Estoque',        required: false },
+    { key: 'stock_min',   label: 'Estoque Mínimo', required: false },
+    { key: 'unit',        label: 'Unidade',        required: false },
+    { key: 'description', label: 'Descrição',      required: false },
+  ],
+  team: [
+    { key: 'name',   label: 'Nome',   required: true  },
+    { key: 'email',  label: 'Email',  required: true  },
+    { key: 'role',   label: 'Role',   required: true  },
+    { key: 'active', label: 'Ativo',  required: false },
+  ],
 };
 
-const fmt = (v) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) ?? 'R$ 0,00';
-const fmtPct = (v) => `${v?.toFixed(1) ?? 0}%`;
+// Mapeamento automático por similaridade de nome
+const AUTO_ALIASES = {
+  transactions: {
+    type:         ['Tipo','tipo','Natureza','natureza'],
+    description:  ['Descrição','descricao','Histórico','historico','Description','Memo'],
+    amount:       ['Valor','valor','Amount','Valor Lançamento'],
+    category:     ['Categoria','categoria','Category','Plano de Contas'],
+    date:         ['Data','data','Date','Competência','competencia'],
+    source:       ['Origem','origem','Source','Fonte','Tipo Lançamento'],
+    client:       ['Cliente','cliente','Client','Razão Social','Sacado'],
+    item_name:    ['Produto','produto','Item','item','Serviço','servico','Descrição do Item'],
+    item_qty:     ['Quantidade','quantidade','Qtd','qtd','Qty'],
+    item_price:   ['Preço Unitário','preco_unitario','Unit Price','Preço Unit','Vlr Unit'],
+    order_number: ['Número Pedido','numero_pedido','N. Pedido','Order Number','Nº OS','Nº Pedido'],
+  },
+  bills: {
+    type:        ['Tipo','tipo','Natureza'],
+    description: ['Descrição','descricao','Histórico','historico'],
+    amount:      ['Valor','valor','Amount'],
+    due_date:    ['Vencimento','vencimento','Data Vencimento','Due Date'],
+    category:    ['Categoria','categoria'],
+    status:      ['Status','status'],
+    notes:       ['Observações','observacoes','Obs'],
+  },
+  clients: {
+    name:     ['Nome','nome','Name','Cliente','Razão Social'],
+    email:    ['Email','email','E-mail'],
+    phone:    ['Telefone','telefone','Phone','Celular'],
+    document: ['Documento','documento','CPF','CNPJ','CPF/CNPJ'],
+    address:  ['Endereço','endereco','Address'],
+    notes:    ['Observações','observacoes','Obs'],
+  },
+  products: {
+    name:        ['Nome','nome','Produto','Name'],
+    sku:         ['SKU','sku','Código','Cod','Referência'],
+    type:        ['Tipo','tipo'],
+    category:    ['Categoria','categoria'],
+    price:       ['Preço de Venda','preco_venda','Preço','Price'],
+    cost:        ['Custo','custo','Cost'],
+    stock_qty:   ['Estoque','estoque','Stock','Quantidade'],
+    stock_min:   ['Estoque Mínimo','estoque_min'],
+    unit:        ['Unidade','unidade','Unit'],
+    description: ['Descrição','descricao','Description'],
+  },
+  team: {
+    name:   ['Nome','nome','Name'],
+    email:  ['Email','email','E-mail'],
+    role:   ['Role','role','Função','Perfil','Cargo'],
+    active: ['Ativo','ativo','Active','Status'],
+  },
+};
 
-export default function Commissions() {
+const SYSTEMS = [
+  { key: 'generico',   label: 'CSV Genérico',  icon: '📋', color: '#6366f1' },
+  { key: 'conta_azul', label: 'Conta Azul',    icon: '🔵', color: '#2563eb' },
+  { key: 'omie',       label: 'Omie',          icon: '🟠', color: '#ea580c' },
+  { key: 'nibo',       label: 'Nibo',          icon: '🟢', color: '#15803d' },
+  { key: 'linx',       label: 'Linx',          icon: '🔶', color: '#f59e0b' },
+];
+
+function buildAutoMapping(columns, module) {
+  const aliases = AUTO_ALIASES[module] || {};
+  const mapping = {};
+  for (const [field, aliasList] of Object.entries(aliases)) {
+    for (const alias of aliasList) {
+      if (columns.includes(alias)) {
+        mapping[field] = alias;
+        break;
+      }
+    }
+  }
+  return mapping;
+}
+
+export default function ImportExport() {
   const { theme, themeId } = useTheme();
-  const isGlass   = themeId === 'glass' || themeId === 'gray';
+  const isGlass = themeId === 'glass' || themeId === 'gray';
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const role = localStorage.getItem('role') || 'viewer';
-  const isAdmin = role === 'admin';
+  const [activeTab, setActiveTab]     = useState('export');
+  const [history, setHistory]           = useState([]);
+  const [histLoading, setHistLoading]   = useState(false);
+  const [detailLog, setDetailLog]        = useState(null);  // log selecionado para modal
 
-  // ── States ──
-  const [rules,      setRules]      = useState([]);
-  const [report,     setReport]     = useState(null);
-  const [users,      setUsers]      = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [repLoading, setRepLoading] = useState(false);
-  const [toast,      setToast]      = useState(null);
-  const [activeTab,  setActiveTab]  = useState('report'); // report | rules
-  const [detailSeller, setDetailSeller] = useState(null);
+  // ── Export state ──
+  const [exportDates, setExportDates]     = useState({ from: '', to: '' });
+  const [exportFormat, setExportFormat]   = useState('csv');
+  const [exportLoading, setExportLoading] = useState({});
+  const [exportSuccess, setExportSuccess] = useState({});
+  const [exportAllLoading, setExportAllLoading] = useState(false);
+  const [exportAllSuccess, setExportAllSuccess] = useState(false);
+  const [exportAllProgress, setExportAllProgress] = useState([]);
 
-  // Filtros do relatório
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo,   setDateTo]   = useState('');
-  const [filterSeller, setFilterSeller] = useState('');
-
-  // Form de regra
-  const [ruleForm, setRuleForm] = useState({ seller_id:'', type:'percent_total', value:'' });
-  const [editRule, setEditRule] = useState(null);
-  const [showForm, setShowForm] = useState(false);
+  // ── Import state ──
+  const [selectedSystem, setSelectedSystem] = useState('generico');
+  const [uploadFile, setUploadFile]         = useState(null);
+  const [csvText, setCsvText]               = useState('');
+  const [importModule, setImportModule]     = useState('transactions');
+  const [importPreview, setImportPreview]   = useState(null);
+  const [importMapping, setImportMapping]   = useState({});
+  const [importStep, setImportStep]         = useState('upload');
+  const [importLoading, setImportLoading]   = useState(false);
+  const [importResult, setImportResult]     = useState(null);
+  const [dupAction, setDupAction]           = useState('skip');  // skip | update | create_anyway
+  const [detectedSystem, setDetectedSystem] = useState(null);
+  const fileRef = useRef();
 
   const token = () => localStorage.getItem('token');
 
-  // ── Cores do tema ──
-  const cardBg     = isGlass ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.05)';
-  const cardBorder = isGlass ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.1)';
-  const inputBg    = isGlass ? 'rgba(255,255,255,0.5)'  : 'rgba(255,255,255,0.07)';
+  const fetchHistory = async () => {
+    setHistLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/import/history`, {
+        headers: { Authorization: `Bearer ${token()}` }
+      });
+      const data = await res.json();
+      setHistory(Array.isArray(data) ? data : []);
+    } catch { }
+    finally { setHistLoading(false); }
+  };
+
+  // Carrega histórico ao abrir a aba
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'history') fetchHistory();
+  };
+  const role  = localStorage.getItem('role') || 'viewer';
+
+  // Modal relatório de produtos
+  const [reportModal, setReportModal] = useState(false);
+
+  // Módulos visíveis conforme role
+  const visibleModules = MODULES.filter(m => !m.adminOnly || role === 'admin');
+
+  // ── cores ──
+  const cardBg     = isGlass ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.06)';
+  const cardBorder = isGlass ? 'rgba(255,255,255,0.5)'  : 'rgba(255,255,255,0.1)';
+  const inputBg    = isGlass ? 'rgba(255,255,255,0.5)'  : 'rgba(255,255,255,0.08)';
   const textMain   = theme.textPrimary;
   const textSub    = theme.textSecondary || theme.textMuted;
-  const primary    = theme.primary || '#6366f1';
-  const primaryGrad= theme.primaryGrad || 'linear-gradient(135deg,#6366f1,#8b5cf6)';
-
   const card = {
-    background: cardBg,
-    border: `1px solid ${cardBorder}`,
-    borderRadius: 16,
+    background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 16, padding: 24,
     backdropFilter: isGlass ? 'blur(16px)' : undefined,
     WebkitBackdropFilter: isGlass ? 'blur(16px)' : undefined,
   };
 
-  const showToast = (msg, type='success') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
+  // ── helpers ──
+  const triggerDownload = (blob, filename) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob); link.download = filename; link.click();
+    URL.revokeObjectURL(link.href);
   };
 
-  // ── Fetch ──
-  const fetchAll = async () => {
-    setLoading(true);
-    try {
-      const [rRes, uRes] = await Promise.all([
-        fetch(`${BASE_URL}/commissions/rules`, { headers: { Authorization: `Bearer ${token()}` } }),
-        fetch(`${BASE_URL}/company/users`,     { headers: { Authorization: `Bearer ${token()}` } }),
-      ]);
-      if (rRes.ok) setRules(await rRes.json());
-      if (uRes.ok) setUsers(await uRes.json());
-    } catch {}
-    setLoading(false);
+  const fetchExport = async (modKey, params) => {
+    const resp = await fetch(`${BASE_URL}/import-export/export/${modKey}?${params}`, {
+      headers: { Authorization: `Bearer ${token()}` }
+    });
+    if (!resp.ok) throw new Error(`${modKey}: ${resp.status}`);
+    return resp;
   };
 
-  const fetchReport = async () => {
-    setRepLoading(true);
+  // ── EXPORTAR ──
+  const handleExport = async (mod) => {
+    setExportLoading(p => ({ ...p, [mod.key]: true }));
     try {
       const params = new URLSearchParams();
-      if (dateFrom)     params.append('date_from', dateFrom);
-      if (dateTo)       params.append('date_to',   dateTo);
-      if (filterSeller) params.append('seller_id', filterSeller);
-      const res = await fetch(`${BASE_URL}/commissions/report?${params}`, {
-        headers: { Authorization: `Bearer ${token()}` }
+      if (mod.supportsDateFilter && exportDates.from) params.append('date_from', exportDates.from);
+      if (mod.supportsDateFilter && exportDates.to)   params.append('date_to',   exportDates.to);
+      params.append('format', exportFormat);
+      const resp = await fetchExport(mod.key, params);
+      const blob = await resp.blob();
+      triggerDownload(blob, `${mod.key}_export.${exportFormat}`);
+      setExportSuccess(p => ({ ...p, [mod.key]: true }));
+      setTimeout(() => setExportSuccess(p => ({ ...p, [mod.key]: false })), 3000);
+    } catch (err) { alert('Erro: ' + err.message); }
+    finally { setExportLoading(p => ({ ...p, [mod.key]: false })); }
+  };
+
+  const handleExportAll = async () => {
+    setExportAllLoading(true); setExportAllSuccess(false); setExportAllProgress([]);
+    const params = new URLSearchParams();
+    if (exportDates.from) params.append('date_from', exportDates.from);
+    if (exportDates.to)   params.append('date_to',   exportDates.to);
+    params.append('format', exportFormat);
+    const blobs = []; const progress = [];
+    for (const mod of visibleModules) {
+      const p = new URLSearchParams(params);
+      if (!mod.supportsDateFilter) { p.delete('date_from'); p.delete('date_to'); }
+      try {
+        const resp = await fetchExport(mod.key, p);
+        const blob = await resp.blob();
+        blobs.push({ name: `${mod.key}.${exportFormat}`, blob });
+        progress.push({ key: mod.key, label: mod.label, ok: true });
+      } catch { progress.push({ key: mod.key, label: mod.label, ok: false }); }
+      setExportAllProgress([...progress]);
+    }
+    for (const { name, blob } of blobs) { triggerDownload(blob, name); await new Promise(r => setTimeout(r, 400)); }
+    setExportAllSuccess(true);
+    setTimeout(() => { setExportAllSuccess(false); setExportAllProgress([]); }, 5000);
+    setExportAllLoading(false);
+  };
+
+  const handleDownloadTemplate = async (modKey) => {
+    try {
+      const resp = await fetch(`${BASE_URL}/import-export/export/template/${modKey}`, { headers: { Authorization: `Bearer ${token()}` } });
+      if (!resp.ok) throw new Error('Falha');
+      triggerDownload(await resp.blob(), `template_${modKey}.csv`);
+    } catch (err) { alert('Erro: ' + err.message); }
+  };
+
+  // ── lê arquivo → csv text ──
+  const readFileAsText = (file) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsText(file, 'UTF-8');
+  });
+
+  // ── IMPORTAR: STEP 1 — PREVIEW + DETECÇÃO ──
+  const handlePreview = async () => {
+    if (!uploadFile) return;
+    setImportLoading(true);
+    try {
+      const text = await readFileAsText(uploadFile);
+      setCsvText(text);
+
+      // 1. Detectar sistema automaticamente
+      const detRes = await fetch(`${BASE_URL}/import/detect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ csv_text: text }),
       });
-      if (res.ok) setReport(await res.json());
-    } catch {}
-    setRepLoading(false);
+      const detData = await detRes.json();
+      const detSys  = detData.sistema || 'generico';
+      const detEnt  = detData.entity  || importModule;
+      setDetectedSystem(detData);
+      if (detSys !== 'generico') {
+        setSelectedSystem(detSys);
+        setImportModule(detEnt);
+      }
+
+      // 2. Preview
+      const entity  = detSys !== 'generico' ? detEnt : importModule;
+      const sistema = detSys !== 'generico' ? detSys : selectedSystem;
+      const prevRes = await fetch(`${BASE_URL}/import/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ csv_text: text, entity, sistema, col_map: importMapping }),
+      });
+      if (!prevRes.ok) throw new Error(`Servidor retornou ${prevRes.status}`);
+      const data = await prevRes.json();
+      setImportPreview(data);
+      if (data.headers?.length) {
+        const autoMap = buildAutoMapping(data.headers, entity);
+        setImportMapping(autoMap);
+      }
+      setImportStep('mapping');
+    } catch (err) { alert('Erro: ' + err.message); }
+    finally { setImportLoading(false); }
   };
 
-  useEffect(() => { fetchAll(); fetchReport(); }, []);
-
-  // ── CRUD Regras ──
-  const handleSaveRule = async () => {
-    if (!ruleForm.seller_id || !ruleForm.value) return showToast('Preencha todos os campos', 'error');
-    const url    = editRule ? `${BASE_URL}/commissions/rules/${editRule.id}` : `${BASE_URL}/commissions/rules`;
-    const method = editRule ? 'PUT' : 'POST';
-    const res = await fetch(url, {
-      method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ ...ruleForm, value: parseFloat(ruleForm.value) }),
-    });
-    if (res.ok) {
-      showToast(editRule ? 'Regra atualizada!' : 'Regra criada!');
-      setShowForm(false); setEditRule(null);
-      setRuleForm({ seller_id:'', type:'percent_total', value:'' });
-      fetchAll(); fetchReport();
-    } else showToast('Erro ao salvar', 'error');
+  // ── IMPORTAR: STEP 1b — REGENERAR PREVIEW ao mudar sistema/entidade ──
+  const handleRepreview = async () => {
+    if (!csvText) return;
+    setImportLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/import/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ csv_text: csvText, entity: importModule, sistema: selectedSystem, col_map: importMapping }),
+      });
+      const data = await res.json();
+      setImportPreview(data);
+    } catch (err) { alert('Erro: ' + err.message); }
+    finally { setImportLoading(false); }
   };
 
-  const handleDeleteRule = async (id) => {
-    if (!confirm('Remover esta regra de comissão?')) return;
-    const res = await fetch(`${BASE_URL}/commissions/rules/${id}`, {
-      method: 'DELETE', headers: { Authorization: `Bearer ${token()}` }
-    });
-    if (res.ok) { showToast('Regra removida'); fetchAll(); fetchReport(); }
-    else showToast('Erro ao remover', 'error');
+  // ── IMPORTAR: STEP 2 — CONFIRMAR ──
+  const handleConfirmImport = async () => {
+    setImportLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/import/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({
+          csv_text: csvText, entity: importModule,
+          sistema: selectedSystem, col_map: importMapping,
+          duplicate_action: dupAction,
+        }),
+      });
+      if (!res.ok) throw new Error(`Servidor retornou ${res.status}`);
+      const result = await res.json();
+      setImportResult(result);
+      setImportStep('result');
+    } catch (err) { alert('Erro na importação: ' + err.message); }
+    finally { setImportLoading(false); }
   };
 
-  const openEditRule = (rule) => {
-    setEditRule(rule);
-    setRuleForm({ seller_id: rule.seller_id, type: rule.type, value: rule.value });
-    setShowForm(true);
+  // Reset completo (usado no "Voltar" e "Nova Importação")
+  const resetImport = () => {
+    setUploadFile(null); setImportPreview(null); setImportMapping({});
+    setImportResult(null); setImportStep('upload');
   };
 
-  // ── Helpers de UI ──
+  // Troca de módulo — preserva o arquivo, limpa só preview/mapeamento
+  const handleModuleChange = (newModule) => {
+    setImportModule(newModule);
+    setImportPreview(null);
+    setImportMapping({});
+    setImportResult(null);
+    setImportStep('upload');
+    // Não zera uploadFile — usuário pode reanalizar o mesmo arquivo
+  };
+
+  // Carrega histórico ao trocar de aba
+  const TABS = [
+    { key: 'export',  label: '⬇️ Exportar' },
+    { key: 'import',  label: '⬆️ Importar' },
+    { key: 'history', label: '🕓 Histórico' },
+  ];
+
   const tabBtn = (active) => ({
-    padding: '9px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
+    padding: '9px 26px', borderRadius: 10, border: 'none', cursor: 'pointer',
     fontWeight: 600, fontSize: 14, transition: 'all 0.2s',
-    background: active ? primaryGrad : 'transparent',
+    background: active ? theme.primaryGrad : 'transparent',
     color: active ? '#fff' : textSub,
     boxShadow: active ? '0 4px 12px rgba(0,0,0,0.2)' : 'none',
   });
 
-  const inp = {
-    width: '100%', padding: '10px 14px', borderRadius: 10,
-    border: `1px solid ${cardBorder}`, background: inputBg,
-    color: textMain, fontSize: 14, outline: 'none', boxSizing: 'border-box',
-  };
+  const formatBtn = (active) => ({
+    padding: '7px 18px', borderRadius: 8, cursor: 'pointer',
+    border: `1px solid ${active ? '#6366f1' : cardBorder}`,
+    background: active ? 'rgba(99,102,241,0.18)' : 'transparent',
+    color: active ? '#818cf8' : textSub,
+    fontWeight: 600, fontSize: 13, transition: 'all 0.2s',
+  });
 
-  const sellerName = (id) => {
-    const u = users.find(u => u.id === id);
-    return u ? (u.name || u.email) : `Vendedor #${id}`;
+  const stepIndicator = (step, label, current) => {
+    const steps = ['upload', 'mapping', 'result'];
+    const idx   = steps.indexOf(step);
+    const cur   = steps.indexOf(current);
+    const done  = idx < cur;
+    const active = idx === cur;
+    return (
+      <div key={step} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 13, fontWeight: 700,
+          background: done ? '#16a34a' : active ? theme.primaryGrad : (isGlass ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'),
+          color: done || active ? '#fff' : textSub,
+          border: `2px solid ${done ? '#16a34a' : active ? '#6366f1' : cardBorder}`,
+        }}>
+          {done ? '✓' : idx + 1}
+        </div>
+        <span style={{ fontSize: 13, color: active ? textMain : textSub, fontWeight: active ? 600 : 400 }}>{label}</span>
+        {idx < 2 && <span style={{ color: textSub, margin: '0 4px' }}>›</span>}
+      </div>
+    );
   };
-
-  const avatarColor = (name='') => {
-    const colors = ['#6366f1','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#22c55e','#3b82f6'];
-    return colors[name.charCodeAt(0) % colors.length];
-  };
-
-  // ── Ordenar vendedores por comissão para ranking ──
-  const ranked = report?.by_seller || [];
 
   return (
     <PageLayout>
-      <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}/>
-
-      <div style={{ flex:1, padding:'32px 36px', overflowY:'auto', position:'relative', zIndex:1 }}>
+      <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <div style={{ flex: 1, overflowY: 'auto', padding: '32px 28px', minWidth: 0 }}>
 
         {/* Header */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:28, flexWrap:'wrap', gap:12 }}>
-          <div>
-            <h1 style={{ margin:0, fontSize:'1.75rem', fontWeight:700, color:textMain }}>💰 Comissões</h1>
-            <p style={{ margin:'6px 0 0', color:textSub, fontSize:14 }}>
-              Gestão de comissões por vendedor — regras, relatórios e rankings
-            </p>
-          </div>
-          {isAdmin && (
-            <button onClick={() => { setShowForm(true); setEditRule(null); setRuleForm({ seller_id:'', type:'percent_total', value:'' }); }}
-              style={{ padding:'10px 22px', borderRadius:12, border:'none', cursor:'pointer',
-                background:primaryGrad, color:'#fff', fontWeight:700, fontSize:14,
-                boxShadow:`0 4px 16px ${primary}44` }}>
-              + Nova Regra
-            </button>
-          )}
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={{ color: textMain, fontSize: 24, fontWeight: 700, margin: 0 }}>📂 Importação & Exportação</h1>
+          <p style={{ color: textSub, fontSize: 14, margin: '6px 0 0' }}>Exporte seus dados ou importe de outros sistemas</p>
         </div>
-
-        {/* KPI Cards topo */}
-        {report && (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:14, marginBottom:28 }}>
-            {[
-              { icon:'🛒', label:'Vendas no período', value:report.total_orders,          color:'#60a5fa', raw:true },
-              { icon:'💳', label:'Faturamento total',  value:fmt(report.total_revenue),    color:'#4ade80' },
-              { icon:'💰', label:'Total comissões',    value:fmt(report.total_commission),  color:'#f59e0b' },
-              { icon:'👥', label:'Vendedores ativos',  value:ranked.length,                color:'#c084fc', raw:true },
-            ].map(k => (
-              <div key={k.label} style={{ ...card, padding:'20px 18px' }}>
-                <div style={{ fontSize:'1.6rem', marginBottom:8 }}>{k.icon}</div>
-                <div style={{ fontSize: k.raw?'1.8rem':'1.4rem', fontWeight:800, color:k.color, marginBottom:4 }}>{k.value}</div>
-                <div style={{ fontSize:12, color:textSub, textTransform:'uppercase', letterSpacing:'0.5px' }}>{k.label}</div>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Tabs */}
-        <div style={{ display:'flex', gap:6, padding:6, borderRadius:14, background:cardBg,
-          border:`1px solid ${cardBorder}`, marginBottom:24, width:'fit-content' }}>
-          <button style={tabBtn(activeTab==='report')} onClick={()=>setActiveTab('report')}>📊 Relatório</button>
-          <button style={tabBtn(activeTab==='rules')}  onClick={()=>setActiveTab('rules')}>⚙️ Regras</button>
+        <div style={{ display: 'flex', gap: 6, padding: 6, borderRadius: 14, background: cardBg, border: `1px solid ${cardBorder}`, marginBottom: 28, width: 'fit-content' }}>
+          <button style={tabBtn(activeTab === 'export')}  onClick={() => handleTabChange('export')}>⬇️ Exportar</button>
+          <button style={tabBtn(activeTab === 'import')}  onClick={() => handleTabChange('import')}>⬆️ Importar</button>
+          <button style={tabBtn(activeTab === 'history')} onClick={() => handleTabChange('history')}>🕓 Histórico</button>
         </div>
 
-        {/* ══ ABA RELATÓRIO ══ */}
-        {activeTab === 'report' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-
-            {/* Filtros */}
-            <div style={{ ...card, padding:'18px 20px' }}>
-              <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end' }}>
-                <div style={{ flex:1, minWidth:140 }}>
-                  <label style={{ fontSize:11, color:textSub, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:6 }}>De</label>
-                  <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp}/>
-                </div>
-                <div style={{ flex:1, minWidth:140 }}>
-                  <label style={{ fontSize:11, color:textSub, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:6 }}>Até</label>
-                  <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp}/>
-                </div>
-                <div style={{ flex:1, minWidth:160 }}>
-                  <label style={{ fontSize:11, color:textSub, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:6 }}>Vendedor</label>
-                  <select value={filterSeller} onChange={e=>setFilterSeller(e.target.value)} style={inp}>
-                    <option value="">Todos</option>
-                    {users.filter(u=>u.role==='seller'||u.role==='admin').map(u=>(
-                      <option key={u.id} value={u.id}>{u.name||u.email}</option>
+        {/* ═══════════ EXPORTAÇÃO ═══════════ */}
+        {activeTab === 'export' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Config */}
+            <div style={card}>
+              <h3 style={{ color: textMain, margin: '0 0 18px', fontSize: 15, fontWeight: 600 }}>⚙️ Configurações de Exportação</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'flex-end' }}>
+                <div>
+                  <div style={{ color: textSub, fontSize: 11, fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.6px' }}>📅 Período (opcional)</div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {['from','to'].map(k => (
+                      <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={{ color: textSub, fontSize: 11 }}>{k === 'from' ? 'De' : 'Até'}</label>
+                        <input type="date" value={exportDates[k]} onChange={e => setExportDates(p => ({ ...p, [k]: e.target.value }))}
+                          style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${cardBorder}`, background: inputBg, color: textMain, fontSize: 14, outline: 'none' }} />
+                      </div>
                     ))}
-                  </select>
+                    {(exportDates.from || exportDates.to) && (
+                      <button onClick={() => setExportDates({ from:'', to:'' })} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${cardBorder}`, background: 'transparent', color: textSub, cursor: 'pointer', fontSize: 13, alignSelf: 'flex-end' }}>✕ Limpar</button>
+                    )}
+                  </div>
                 </div>
-                <button onClick={fetchReport} disabled={repLoading}
-                  style={{ padding:'10px 22px', borderRadius:10, border:'none', cursor:'pointer',
-                    background:primaryGrad, color:'#fff', fontWeight:700, fontSize:14,
-                    opacity:repLoading?0.7:1, flexShrink:0 }}>
-                  {repLoading ? '⏳' : '🔍 Filtrar'}
+                <div>
+                  <div style={{ color: textSub, fontSize: 11, fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.6px' }}>📁 Formato</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={formatBtn(exportFormat==='csv')}  onClick={() => setExportFormat('csv')}>📋 CSV</button>
+                    <button style={formatBtn(exportFormat==='xlsx')} onClick={() => setExportFormat('xlsx')}>📊 Excel</button>
+                  </div>
+                </div>
+              </div>
+              {!exportDates.from && !exportDates.to && <p style={{ color: textSub, fontSize: 12, margin: '14px 0 0', opacity: 0.7 }}>Sem filtro — exportará todos os registros.</p>}
+            </div>
+
+            {/* Exportar Tudo */}
+            <div style={{ ...card, background: isGlass ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.35)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <div style={{ color: textMain, fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>📦 Exportar Tudo</div>
+                  <div style={{ color: textSub, fontSize: 13, marginTop: 4 }}>Baixa todos os {visibleModules.length} módulos de uma vez{exportFormat === 'csv' ? ' em CSV' : ' em Excel'}</div>
+                </div>
+                <button onClick={handleExportAll} disabled={exportAllLoading} style={{ padding: '11px 28px', borderRadius: 10, border: 'none', cursor: exportAllLoading ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, background: exportAllSuccess ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#6366f1,#4f46e5)', color: '#fff', opacity: exportAllLoading ? 0.8 : 1, boxShadow: '0 4px 16px rgba(99,102,241,0.3)', whiteSpace: 'nowrap' }}>
+                  {exportAllLoading ? '⏳ Exportando...' : exportAllSuccess ? '✅ Concluído!' : '📦 Exportar Tudo'}
                 </button>
+              </div>
+              {exportAllProgress.length > 0 && (
+                <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {exportAllProgress.map(p => (
+                    <span key={p.key} style={{ padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: p.ok ? 'rgba(22,163,74,0.15)' : 'rgba(239,68,68,0.15)', color: p.ok ? '#4ade80' : '#f87171', border: `1px solid ${p.ok ? 'rgba(22,163,74,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
+                      {p.ok ? '✅' : '❌'} {p.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── RELATÓRIOS ── */}
+            <div style={{ ...card, background: isGlass ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <div style={{ color: textMain, fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    📊 Relatórios em PDF
+                  </div>
+                  <div style={{ color: textSub, fontSize: 13, marginTop: 4 }}>
+                    Gere relatórios formatados com filtros e impressão temática
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {(role === 'admin' || role === 'financial' || role === 'stock') && (
+                    <button
+                      onClick={() => setReportModal(true)}
+                      style={{ padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', boxShadow: '0 4px 16px rgba(22,163,74,0.35)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      📦 Produtos & Estoque
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {[
+                  { icon: '📦', label: 'Produtos & Estoque', desc: 'Catálogo, margens, estoque e movimentações', action: () => setReportModal(true), roles: ['admin','financial','stock'] },
+                ].filter(r => r.roles.includes(role)).map((r, i) => (
+                  <div key={i} onClick={r.action} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(34,197,94,0.2)', background: isGlass ? 'rgba(255,255,255,0.2)' : 'rgba(34,197,94,0.06)', cursor: 'pointer', transition: 'all 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = isGlass ? 'rgba(255,255,255,0.3)' : 'rgba(34,197,94,0.12)'}
+                    onMouseLeave={e => e.currentTarget.style.background = isGlass ? 'rgba(255,255,255,0.2)' : 'rgba(34,197,94,0.06)'}
+                  >
+                    <span style={{ fontSize: 20 }}>{r.icon}</span>
+                    <div>
+                      <div style={{ color: textMain, fontWeight: 600, fontSize: 13 }}>{r.label}</div>
+                      <div style={{ color: textSub, fontSize: 11, marginTop: 1 }}>{r.desc}</div>
+                    </div>
+                    <span style={{ color: '#22c55e', marginLeft: 'auto', fontSize: 14 }}>→</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Ranking de vendedores */}
-            {ranked.length > 0 && (
-              <div style={{ ...card, padding:'20px 22px' }}>
-                <h3 style={{ margin:'0 0 16px', fontSize:15, fontWeight:700, color:textMain }}>🏆 Ranking de Vendedores</h3>
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {ranked.map((s, i) => {
-                    const maxComm = ranked[0]?.total_commission || 1;
-                    const pct = (s.total_commission / maxComm) * 100;
-                    const medals = ['🥇','🥈','🥉'];
-                    const ac = avatarColor(s.seller_name);
-                    return (
-                      <div key={s.seller_id}
-                        onClick={() => setDetailSeller(detailSeller?.seller_id===s.seller_id ? null : s)}
-                        style={{ padding:'14px 16px', borderRadius:12, cursor:'pointer',
-                          background: detailSeller?.seller_id===s.seller_id ? `${primary}18` : isGlass?'rgba(255,255,255,0.15)':'rgba(255,255,255,0.04)',
-                          border: `1px solid ${detailSeller?.seller_id===s.seller_id ? primary : cardBorder}`,
-                          transition:'all 0.2s' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:10 }}>
-                          <div style={{ fontSize:20, flexShrink:0 }}>{medals[i] || `#${i+1}`}</div>
-                          <div style={{ width:36, height:36, borderRadius:'50%', background:ac,
-                            display:'flex', alignItems:'center', justifyContent:'center',
-                            fontWeight:700, fontSize:14, color:'#fff', flexShrink:0 }}>
-                            {s.seller_name?.charAt(0)?.toUpperCase() || '?'}
-                          </div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:700, color:textMain, fontSize:14 }}>{s.seller_name}</div>
-                            <div style={{ fontSize:12, color:textSub }}>
-                              {s.total_sales} venda{s.total_sales!==1?'s':''} · {
-                                s.commission_type==='percent_total'  ? `${s.commission_rate}% do total` :
-                                s.commission_type==='percent_profit' ? `${s.commission_rate}% do lucro` :
-                                s.commission_type==='fixed'          ? `${fmt(s.commission_rate)} fixo/venda` :
-                                'Sem regra'
-                              }
-                            </div>
-                          </div>
-                          <div style={{ textAlign:'right', flexShrink:0 }}>
-                            <div style={{ fontSize:18, fontWeight:800, color:'#4ade80' }}>{fmt(s.total_commission)}</div>
-                            <div style={{ fontSize:11, color:textSub }}>em comissão</div>
-                          </div>
-                          <div style={{ fontSize:12, color:textSub, flexShrink:0 }}>{detailSeller?.seller_id===s.seller_id?'▲':'▼'}</div>
-                        </div>
+            {/* Grid módulos */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+              {visibleModules.map(mod => (
+                <div key={mod.key} style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 26 }}>{mod.icon}</span>
+                    <div>
+                      <div style={{ color: textMain, fontWeight: 700, fontSize: 15 }}>{mod.label}</div>
+                      <div style={{ color: textSub, fontSize: 12 }}>{mod.description}</div>
+                    </div>
+                  </div>
+                  {mod.supportsDateFilter && (exportDates.from || exportDates.to) ? (
+                    <div style={{ fontSize: 11, color: '#818cf8', background: 'rgba(99,102,241,0.12)', borderRadius: 6, padding: '4px 8px' }}>📅 {exportDates.from||'...'} → {exportDates.to||'...'}</div>
+                  ) : !mod.supportsDateFilter ? (
+                    <div style={{ fontSize: 11, color: textSub, background: isGlass ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '4px 8px' }}>Exporta todos os registros</div>
+                  ) : null}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                    <button onClick={() => handleExport(mod)} disabled={exportLoading[mod.key]}
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: exportLoading[mod.key] ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 13, background: exportSuccess[mod.key] ? 'linear-gradient(135deg,#16a34a,#15803d)' : theme.primaryGrad, color: '#fff', opacity: exportLoading[mod.key] ? 0.7 : 1 }}>
+                      {exportLoading[mod.key] ? '⏳...' : exportSuccess[mod.key] ? '✅ Baixado!' : exportFormat==='xlsx' ? '📊 Excel' : '📋 CSV'}
+                    </button>
+                    {mod.hasTemplate && (
+                      <button onClick={() => handleDownloadTemplate(mod.key)} title="Template" style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${cardBorder}`, background: 'transparent', color: textSub, cursor: 'pointer', fontSize: 13 }}>📋</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-                        {/* Barra de progresso */}
-                        <div style={{ height:5, borderRadius:5, background:'rgba(255,255,255,0.08)', overflow:'hidden' }}>
-                          <div style={{ height:'100%', borderRadius:5, width:`${pct}%`,
-                            background:i===0?'linear-gradient(90deg,#f59e0b,#fbbf24)':
-                                       i===1?'linear-gradient(90deg,#94a3b8,#cbd5e1)':
-                                       i===2?'linear-gradient(90deg,#b45309,#d97706)':primaryGrad,
-                            transition:'width 0.8s ease' }}/>
-                        </div>
+        {/* ═══════════ IMPORTAÇÃO ═══════════ */}
+        {activeTab === 'import' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-                        {/* Detalhe expansível */}
-                        {detailSeller?.seller_id === s.seller_id && (
-                          <div style={{ marginTop:14, paddingTop:14, borderTop:`1px solid ${cardBorder}` }}>
-                            <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginBottom:12 }}>
-                              {[
-                                { label:'Faturamento', value:fmt(s.total_revenue) },
-                                { label:'Comissão',    value:fmt(s.total_commission) },
-                                { label:'Ticket Médio',value:fmt(s.total_revenue/(s.total_sales||1)) },
-                              ].map(m=>(
-                                <div key={m.label} style={{ flex:1, minWidth:100, ...card, padding:'10px 14px' }}>
-                                  <div style={{ fontSize:15, fontWeight:700, color:textMain }}>{m.value}</div>
-                                  <div style={{ fontSize:11, color:textSub }}>{m.label}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ fontSize:12, color:textSub }}>
-                              Pedidos: {s.orders?.join(', ') || '—'}
-                            </div>
-                          </div>
-                        )}
+            {/* Steps indicator */}
+            <div style={{ ...card, padding: '16px 24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                {stepIndicator('upload',  '1. Arquivo',    importStep)}
+                {stepIndicator('mapping', '2. Mapeamento', importStep)}
+                {stepIndicator('result',  '3. Resultado',  importStep)}
+              </div>
+            </div>
+
+            {/* ── STEP 1: UPLOAD ── */}
+            {importStep === 'upload' && (
+              <>
+                {/* Sistemas */}
+                <div style={card}>
+                  <h3 style={{ color: textMain, margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>🔌 Sistema de Origem</h3>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {SYSTEMS.map(sys => (
+                      <div key={sys.key} onClick={() => setSelectedSystem(sys.key)} style={{ padding: '8px 16px', borderRadius: 20, cursor: 'pointer', transition: 'all 0.2s', border: `2px solid ${selectedSystem===sys.key ? sys.color : cardBorder}`, background: selectedSystem===sys.key ? `${sys.color}22` : 'transparent', color: selectedSystem===sys.key ? textMain : textSub, fontWeight: selectedSystem===sys.key ? 700 : 400, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{sys.icon}</span><span>{sys.label}</span>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Tabela de vendas detalhada */}
-            {report?.sales?.length > 0 && (
-              <div style={{ ...card, padding:'20px 22px' }}>
-                <h3 style={{ margin:'0 0 16px', fontSize:15, fontWeight:700, color:textMain }}>📋 Detalhamento por Venda</h3>
-                <div style={{ overflowX:'auto' }}>
-                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-                    <thead>
-                      <tr>
-                        {['Pedido','Vendedor','Data','Total','Tipo Comissão','Comissão'].map(h=>(
-                          <th key={h} style={{ padding:'10px 12px', textAlign:'left', color:textSub,
-                            fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'0.5px',
-                            borderBottom:`1px solid ${cardBorder}`, whiteSpace:'nowrap' }}>{h}</th>
+                {/* Upload */}
+                <div style={card}>
+                  <h3 style={{ color: textMain, margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>⬆️ Enviar Arquivo</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div>
+                      <label style={{ color: textSub, fontSize: 12, fontWeight: 700, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Módulo de destino</label>
+                      <select value={importModule} onChange={e => handleModuleChange(e.target.value)}
+                        style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${cardBorder}`, background: inputBg, color: textMain, fontSize: 14, outline: 'none', minWidth: 220 }}>
+                        {visibleModules.filter(m => m.canImport).map(m => (
+                          <option key={m.key} value={m.key}>{m.icon} {m.label}{m.adminOnly ? ' (admin)' : ''}</option>
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.sales.map((s,i)=>(
-                        <tr key={s.order_id} style={{ borderBottom:`1px solid ${isGlass?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.04)'}` }}>
-                          <td style={{ padding:'10px 12px', color:primary, fontWeight:600 }}>{s.order_number}</td>
-                          <td style={{ padding:'10px 12px', color:textMain }}>{s.seller_name}</td>
-                          <td style={{ padding:'10px 12px', color:textSub, whiteSpace:'nowrap' }}>{s.date?.substring(0,10) || '—'}</td>
-                          <td style={{ padding:'10px 12px', color:textMain, fontWeight:600 }}>{fmt(s.total)}</td>
-                          <td style={{ padding:'10px 12px' }}>
-                            {s.commission_type ? (
-                              <span style={{ background:`${primary}18`, color:primary, padding:'3px 10px',
-                                borderRadius:20, fontSize:11, fontWeight:600 }}>
-                                {TYPE_LABELS[s.commission_type]?.label || s.commission_type}
-                                {s.commission_rate && ` · ${s.commission_type==='fixed'?fmt(s.commission_rate):fmtPct(s.commission_rate)}`}
-                              </span>
-                            ) : <span style={{ color:textSub, fontSize:12 }}>Sem regra</span>}
-                          </td>
-                          <td style={{ padding:'10px 12px', color:'#4ade80', fontWeight:700 }}>{fmt(s.commission_value)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ borderTop:`2px solid ${cardBorder}` }}>
-                        <td colSpan={3} style={{ padding:'12px', color:textSub, fontWeight:700, fontSize:13 }}>TOTAL</td>
-                        <td style={{ padding:'12px', color:textMain, fontWeight:800 }}>{fmt(report.total_revenue)}</td>
-                        <td/>
-                        <td style={{ padding:'12px', color:'#4ade80', fontWeight:800 }}>{fmt(report.total_commission)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </select>
+                    </div>
+
+                    <div onClick={() => fileRef.current?.click()}
+                      style={{ border: `2px dashed ${uploadFile ? '#16a34a' : cardBorder}`, borderRadius: 12, padding: '36px 20px', textAlign: 'center', cursor: 'pointer', background: uploadFile ? 'rgba(22,163,74,0.06)' : isGlass ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.03)', transition: 'all 0.2s' }}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => { e.preventDefault(); const f=e.dataTransfer.files[0]; if(f){setUploadFile(f);setImportPreview(null);} }}>
+                      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display:'none' }} onChange={e => { const f=e.target.files[0]; if(f){setUploadFile(f);setImportPreview(null);} }} />
+                      {uploadFile ? (
+                        <><div style={{ fontSize:32, marginBottom:8 }}>✅</div><div style={{ color:'#16a34a', fontWeight:700, fontSize:14 }}>{uploadFile.name}</div><div style={{ color:textSub, fontSize:12, marginTop:4 }}>{(uploadFile.size/1024).toFixed(1)} KB — clique para trocar</div></>
+                      ) : (
+                        <><div style={{ fontSize:38, marginBottom:8 }}>📂</div><div style={{ color:textMain, fontWeight:600, fontSize:14 }}>Arraste um arquivo CSV ou Excel</div><div style={{ color:textSub, fontSize:12, marginTop:4 }}>ou clique para selecionar</div></>
+                      )}
+                    </div>
+
+                    <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:textSub }}>
+                      <span>💡</span><span>Não tem o arquivo no formato correto?</span>
+                      <button onClick={() => handleDownloadTemplate(importModule)} style={{ background:'none', border:'none', color:'#818cf8', cursor:'pointer', fontWeight:700, fontSize:13, padding:0, textDecoration:'underline' }}>Baixe o template aqui</button>
+                    </div>
+
+                    <button onClick={handlePreview} disabled={!uploadFile || importLoading}
+                      style={{ padding:'11px 0', borderRadius:10, border:'none', cursor:!uploadFile||importLoading?'not-allowed':'pointer', fontWeight:700, fontSize:14, background:!uploadFile?(isGlass?'rgba(0,0,0,0.08)':'rgba(255,255,255,0.08)'):theme.primaryGrad, color:!uploadFile?textSub:'#fff', opacity:importLoading?0.7:1 }}>
+                      {importLoading ? '⏳ Analisando...' : '🔍 Analisar arquivo'}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
-            {report?.sales?.length === 0 && !repLoading && (
-              <div style={{ ...card, padding:'60px 20px', textAlign:'center' }}>
-                <div style={{ fontSize:'2.5rem', marginBottom:12 }}>📭</div>
-                <div style={{ color:textMain, fontWeight:600, marginBottom:6 }}>Nenhuma venda no período</div>
-                <div style={{ color:textSub, fontSize:13 }}>Ajuste os filtros ou conclua vendas para ver o relatório</div>
-              </div>
+            {/* ── STEP 2: MAPEAMENTO ── */}
+            {importStep === 'mapping' && importPreview && (
+              <>
+                {/* Preview das primeiras linhas */}
+                <div style={card}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:8 }}>
+                    <h3 style={{ color:textMain, margin:0, fontSize:15, fontWeight:600 }}>📄 Preview — {uploadFile?.name}</h3>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <span style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600 }}>{importPreview.headers?.length || 0} colunas</span>
+                      <span style={{ background:'rgba(22,163,74,0.15)', color:'#4ade80', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600 }}>{importPreview.preview?.length || 0} linhas (preview)</span>
+                    </div>
+                  </div>
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                      <thead><tr>
+                        {Object.keys(importPreview.preview?.[0]||{}).filter(k=>!k.startsWith('_')).map(col => (
+                          <th key={col} style={{ padding:'8px 10px', background:isGlass?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.05)', color:textSub, fontWeight:600, textAlign:'left', borderBottom:`1px solid ${cardBorder}`, whiteSpace:'nowrap' }}>{col}</th>
+                        ))}
+                        <th style={{ padding:'8px 10px', background:isGlass?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.05)', color:textSub, fontWeight:600, textAlign:'left', borderBottom:`1px solid ${cardBorder}` }}>Duplicata?</th>
+                      </tr></thead>
+                      <tbody>{(importPreview.preview||[]).map((row,i) => (
+                        <tr key={i}>
+                          {Object.entries(row).filter(([k])=>!k.startsWith('_')).map(([k,v]) => (
+                            <td key={k} style={{ padding:'6px 10px', color:textMain, borderBottom:`1px solid ${isGlass?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.04)'}`, whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }}>
+                              {v !== null && v !== '' && v !== undefined ? String(v) : <span style={{ opacity:0.3 }}>—</span>}
+                            </td>
+                          ))}
+                          <td style={{ padding:'6px 10px', borderBottom:`1px solid ${isGlass?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.04)'}` }}>
+                            {row._duplicate
+                              ? <span style={{ background:'rgba(245,158,11,0.15)', color:'#f59e0b', padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700 }}>⚠️ {row._duplicate_name||'Duplicata'}</span>
+                              : <span style={{ background:'rgba(34,197,94,0.1)', color:'#4ade80', padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700 }}>✅ Novo</span>
+                            }
+                          </td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Banner detecção automática */}
+                {detectedSystem && detectedSystem.sistema !== 'generico' && (
+                  <div style={{ ...card, border:'1px solid rgba(34,197,94,0.3)', background:isGlass?'rgba(34,197,94,0.1)':'rgba(34,197,94,0.06)', padding:'14px 18px' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <span style={{ fontSize:20 }}>🎯</span>
+                      <div>
+                        <div style={{ color:'#4ade80', fontWeight:700, fontSize:14 }}>
+                          Sistema detectado automaticamente: <strong>
+                            {detectedSystem.sistema === 'conta_azul' ? 'Conta Azul' :
+                             detectedSystem.sistema === 'omie' ? 'Omie' :
+                             detectedSystem.sistema === 'linx' ? 'Linx' : 'Nibo'}
+                          </strong>
+                        </div>
+                        <div style={{ color:textSub, fontSize:12, marginTop:2 }}>
+                          Confiança: {Math.round((detectedSystem.confidence||0)*100)}% · Entidade: {detectedSystem.entity}
+                          {' — '}campos mapeados automaticamente, sem necessidade de ajustes.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ação de duplicatas */}
+                <div style={card}>
+                  <h3 style={{ color:textMain, margin:'0 0 8px', fontSize:15, fontWeight:600 }}>🔁 Duplicatas</h3>
+                  <p style={{ color:textSub, fontSize:13, margin:'0 0 14px' }}>O que fazer quando o registro já existir no sistema?</p>
+                  <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                    {[
+                      { v:'skip',          label:'⏭️ Ignorar',          desc:'Mantém o registro existente'    },
+                      { v:'update',        label:'✏️ Atualizar',         desc:'Atualiza dados do existente'    },
+                      { v:'create_anyway', label:'➕ Criar mesmo assim', desc:'Cria um registro duplicado'     },
+                    ].map(opt => (
+                      <div key={opt.v} onClick={() => setDupAction(opt.v)}
+                        style={{ flex:1, minWidth:140, padding:'12px 14px', borderRadius:10, cursor:'pointer', border:`2px solid ${dupAction===opt.v?theme.primary:cardBorder}`, background:dupAction===opt.v?`${theme.primary}18`:'transparent', transition:'all 0.2s' }}>
+                        <div style={{ fontWeight:700, fontSize:13, color:dupAction===opt.v?theme.primary:textMain, marginBottom:3 }}>{opt.label}</div>
+                        <div style={{ fontSize:11, color:textSub }}>{opt.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mapeamento de colunas */}
+                <div style={card}>
+                  <h3 style={{ color:textMain, margin:'0 0 8px', fontSize:15, fontWeight:600 }}>🗂️ Mapeamento de Colunas</h3>
+                  <p style={{ color:textSub, fontSize:13, margin:'0 0 20px' }}>
+                    {selectedSystem !== 'generico'
+                      ? `Mapeamento automático do ${selectedSystem === 'conta_azul' ? 'Conta Azul' : selectedSystem === 'omie' ? 'Omie' : selectedSystem === 'linx' ? 'Linx' : 'Nibo'} aplicado. Confira e ajuste se necessário.`
+                      : 'Campos com ✅ foram mapeados automaticamente. Ajuste os que ficaram em branco.'}
+                  </p>
+
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:12 }}>
+                    {(MODULE_FIELDS[importModule] || []).map(field => {
+                      const mapped  = importMapping[field.key];
+                      const isAuto  = !!mapped;
+                      return (
+                        <div key={field.key} style={{ background:isGlass?'rgba(255,255,255,0.15)':'rgba(255,255,255,0.04)', borderRadius:10, padding:'12px 14px', border:`1px solid ${isAuto?'rgba(99,102,241,0.3)':cardBorder}` }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <span style={{ color:textMain, fontWeight:600, fontSize:13 }}>{field.label}</span>
+                              {field.required && <span style={{ fontSize:10, color:'#f87171', background:'rgba(239,68,68,0.15)', padding:'1px 6px', borderRadius:4 }}>obrigatório</span>}
+                            </div>
+                            {isAuto && <span style={{ fontSize:11, color:'#818cf8' }}>✅ auto</span>}
+                          </div>
+                          {field.hint && <div style={{ fontSize:11, color:textSub, marginBottom:6, opacity:0.7 }}>ex: {field.hint}</div>}
+                          <select
+                            value={importMapping[field.key] || ''}
+                            onChange={e => setImportMapping(p => ({ ...p, [field.key]: e.target.value || undefined }))}
+                            style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:`1px solid ${cardBorder}`, background:inputBg, color:textMain, fontSize:13, outline:'none' }}
+                          >
+                            <option value="">— não importar —</option>
+                            {(importPreview.headers||[]).map(col => (
+                              <option key={col} value={col}>{col}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Ações */}
+                <div style={{ display:'flex', gap:12, justifyContent:'flex-end' }}>
+                  <button onClick={resetImport} style={{ padding:'11px 24px', borderRadius:10, border:`1px solid ${cardBorder}`, background:'transparent', color:textSub, cursor:'pointer', fontWeight:600, fontSize:14 }}>
+                    ← Voltar
+                  </button>
+                  <button onClick={handleConfirmImport} disabled={importLoading}
+                    style={{ padding:'11px 32px', borderRadius:10, border:'none', cursor:importLoading?'not-allowed':'pointer', fontWeight:700, fontSize:14, background:theme.primaryGrad, color:'#fff', opacity:importLoading?0.7:1, boxShadow:'0 4px 16px rgba(99,102,241,0.3)' }}>
+                    {importLoading ? '⏳ Importando...' : '✅ Confirmar Importação'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── STEP 3: RESULTADO ── */}
+            {importStep === 'result' && importResult && (
+              <>
+                {/* Cards resumo */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:12 }}>
+                  {[
+                    { label:'Criados',     value:importResult.created,          color:'#4ade80', bg:'rgba(22,163,74,0.12)',  icon:'✅' },
+                    { label:'Atualizados', value:importResult.updated,          color:'#60a5fa', bg:'rgba(37,99,235,0.12)',  icon:'🔄' },
+                    { label:'Ignorados',   value:importResult.skipped,          color:'#f59e0b', bg:'rgba(245,158,11,0.12)', icon:'⏭️' },
+                    { label:'Erros',       value:importResult.errors?.length||0,color:'#f87171', bg:'rgba(239,68,68,0.12)', icon:'❌' },
+                  ].map(s => (
+                    <div key={s.label} style={{ ...card, textAlign:'center', padding:'20px 16px' }}>
+                      <div style={{ fontSize:28, marginBottom:6 }}>{s.icon}</div>
+                      <div style={{ fontSize:28, fontWeight:800, color:s.color }}>{s.value}</div>
+                      <div style={{ fontSize:12, color:textSub, marginTop:4 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Info especial (ex: equipe precisa redefinir senha) */}
+                {importResult.info && (
+                  <div style={{ ...card, border: '1px solid rgba(99,102,241,0.3)', background: isGlass ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: 20 }}>ℹ️</span>
+                      <div style={{ color: textMain, fontSize: 13, lineHeight: 1.5 }}>{importResult.info}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Vendas criadas sem cliente */}
+                {importResult.orders_no_client?.length > 0 && (
+                  <div style={{ ...card, border:'1px solid rgba(245,158,11,0.35)', background:isGlass?'rgba(245,158,11,0.1)':'rgba(245,158,11,0.06)' }}>
+                    <h4 style={{ color:'#f59e0b', margin:'0 0 12px', fontSize:14, fontWeight:700 }}>
+                      ⚠️ {importResult.orders_no_client.length} venda(s) criada(s) sem cliente identificado
+                    </h4>
+                    <p style={{ color:textSub, fontSize:12, margin:'0 0 12px' }}>
+                      Acesse <strong>Vendas</strong> e edite essas ordens para vincular o cliente correto:
+                    </p>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {importResult.orders_no_client.map((o, i) => (
+                        <div key={i} style={{ background:isGlass?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.04)', borderRadius:8, padding:'10px 14px', border:`1px solid rgba(245,158,11,0.2)`, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+                          <div>
+                            <div style={{ color:textMain, fontWeight:600, fontSize:13 }}>{o.order_number}</div>
+                            <div style={{ color:textSub, fontSize:12, marginTop:2 }}>{o.description} — linha {o.row}</div>
+                          </div>
+                          <a href="/sales" style={{ fontSize:12, color:'#f59e0b', fontWeight:600, textDecoration:'underline' }}>Ver em Vendas →</a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Duplicatas notificadas */}
+                {importResult.duplicates_notified?.length > 0 && (
+                  <div style={{ ...card, border:'1px solid rgba(251,191,36,0.3)', background:isGlass?'rgba(251,191,36,0.1)':'rgba(251,191,36,0.06)' }}>
+                    <h4 style={{ color:'#fbbf24', margin:'0 0 12px', fontSize:14, fontWeight:700 }}>⚠️ Registros Atualizados com Dados Conflitantes</h4>
+                    <p style={{ color:textSub, fontSize:12, margin:'0 0 12px' }}>Estes registros já existiam com dados diferentes. Verifique se a atualização está correta:</p>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {importResult.duplicates_notified.map((d, i) => (
+                        <div key={i} style={{ background:isGlass?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.04)', borderRadius:8, padding:'10px 14px', border:`1px solid rgba(251,191,36,0.2)` }}>
+                          <div style={{ color:textMain, fontWeight:600, fontSize:13 }}>{d.name}{d.sku ? ` (SKU: ${d.sku})` : ''}</div>
+                          <div style={{ color:textSub, fontSize:12, marginTop:2 }}>Linha {d.row} — {d.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Relatório de erros */}
+                {importResult.errors?.length > 0 && (
+                  <div style={{ ...card, border:'1px solid rgba(239,68,68,0.3)', background:isGlass?'rgba(239,68,68,0.08)':'rgba(239,68,68,0.05)' }}>
+                    <h4 style={{ color:'#f87171', margin:'0 0 12px', fontSize:14, fontWeight:700 }}>❌ Erros encontrados ({importResult.errors.length})</h4>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      {importResult.errors.map((err, i) => {
+                        const msg = typeof err === 'string' ? err : `Linha ${err.row}: ${err.field ? err.field + ' — ' : ''}${err.message || JSON.stringify(err)}`;
+                        return (
+                          <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 12px', background:'rgba(239,68,68,0.08)', borderRadius:8, border:'1px solid rgba(239,68,68,0.2)' }}>
+                            <span style={{ color:'#f87171', fontWeight:700, fontSize:12, flexShrink:0 }}>#{i+1}</span>
+                            <span style={{ color:textMain, fontSize:12 }}>{msg}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Ações finais */}
+                <div style={{ display:'flex', gap:12 }}>
+                  <button onClick={resetImport} style={{ padding:'11px 28px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:700, fontSize:14, background:theme.primaryGrad, color:'#fff', boxShadow:'0 4px 16px rgba(99,102,241,0.3)' }}>
+                    ⬆️ Nova Importação
+                  </button>
+                  <button onClick={() => { setActiveTab('export'); }} style={{ padding:'11px 24px', borderRadius:10, border:`1px solid ${cardBorder}`, background:'transparent', color:textSub, cursor:'pointer', fontWeight:600, fontSize:14 }}>
+                    ⬇️ Ir para Exportação
+                  </button>
+                </div>
+              </>
             )}
           </div>
         )}
 
-        {/* ══ ABA REGRAS ══ */}
-        {activeTab === 'rules' && (
+        {/* ═══════════ HISTÓRICO ═══════════ */}
+        {activeTab === 'history' && (
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
-            {!isAdmin && (
-              <div style={{ ...card, padding:'20px', textAlign:'center', color:textSub }}>
-                Apenas administradores podem gerenciar regras de comissão.
+            {/* Header */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <h3 style={{ color:textMain, margin:0, fontSize:16, fontWeight:700 }}>🕓 Histórico de Importações e Exportações</h3>
+                <p style={{ color:textSub, margin:'4px 0 0', fontSize:13 }}>Registro de todas as operações realizadas</p>
+              </div>
+              <button onClick={fetchHistory} disabled={histLoading}
+                style={{ padding:'8px 18px', borderRadius:10, border:`1px solid ${cardBorder}`, background:'transparent', color:textSub, cursor:'pointer', fontWeight:600, fontSize:13 }}>
+                {histLoading ? '⏳' : '🔄 Atualizar'}
+              </button>
+            </div>
+
+            {histLoading && (
+              <div style={{ textAlign:'center', color:textSub, padding:'40px 0' }}>Carregando histórico...</div>
+            )}
+
+            {!histLoading && history.length === 0 && (
+              <div style={{ ...card, textAlign:'center', padding:'60px 20px' }}>
+                <div style={{ fontSize:'2.5rem', marginBottom:12 }}>📭</div>
+                <div style={{ color:textMain, fontWeight:600, marginBottom:6 }}>Nenhum registro ainda</div>
+                <div style={{ color:textSub, fontSize:13 }}>As importações e exportações aparecerão aqui</div>
               </div>
             )}
 
-            {/* Formulário */}
-            {isAdmin && showForm && (
-              <div style={{ ...card, padding:'22px 24px' }}>
-                <h3 style={{ margin:'0 0 18px', fontSize:15, fontWeight:700, color:textMain }}>
-                  {editRule ? '✏️ Editar Regra' : '➕ Nova Regra de Comissão'}
-                </h3>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14 }}>
-                  <div>
-                    <label style={{ fontSize:11, color:textSub, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:6 }}>Vendedor</label>
-                    <select value={ruleForm.seller_id} onChange={e=>setRuleForm(p=>({...p,seller_id:e.target.value}))} style={inp}>
-                      <option value="">Selecione...</option>
-                      {users.filter(u=>u.role==='seller'||u.role==='admin').map(u=>(
-                        <option key={u.id} value={u.id}>{u.name||u.email}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize:11, color:textSub, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:6 }}>Tipo</label>
-                    <select value={ruleForm.type} onChange={e=>setRuleForm(p=>({...p,type:e.target.value}))} style={inp}>
-                      {Object.entries(TYPE_LABELS).map(([k,v])=>(
-                        <option key={k} value={k}>{v.icon} {v.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize:11, color:textSub, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:6 }}>
-                      {ruleForm.type==='fixed' ? 'Valor (R$)' : 'Percentual (%)'}
-                    </label>
-                    <input type="number" min="0" step="0.1" placeholder={ruleForm.type==='fixed'?'Ex: 50.00':'Ex: 5.0'}
-                      value={ruleForm.value} onChange={e=>setRuleForm(p=>({...p,value:e.target.value}))} style={inp}/>
-                  </div>
-                </div>
+            {/* Modal de detalhe */}
+            {detailLog && (
+              <div style={{ position:"fixed", inset:0, zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center",
+                background:"rgba(0,0,0,0.7)", backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)" }}
+                onClick={() => setDetailLog(null)}>
+                <div onClick={e=>e.stopPropagation()}
+                  style={{ ...card, width:"min(700px,95vw)", maxHeight:"85vh", overflowY:"auto",
+                    position:"relative", padding:28, borderRadius:20,
+                    background:isGlass?"rgba(255,255,255,0.95)":"rgba(15,22,40,0.98)",
+                    border:`1px solid ${cardBorder}`,
+                    boxShadow:"0 24px 80px rgba(0,0,0,0.6)" }}>
 
-                {ruleForm.type && (
-                  <div style={{ marginTop:12, padding:'10px 14px', borderRadius:10,
-                    background:`${primary}12`, border:`1px solid ${primary}30`,
-                    fontSize:12, color:textSub }}>
-                    {TYPE_LABELS[ruleForm.type]?.desc}
-                    {ruleForm.value && ruleForm.type !== 'fixed' && ` — ${ruleForm.value}% sobre cada venda`}
-                    {ruleForm.value && ruleForm.type === 'fixed' && ` — ${fmt(parseFloat(ruleForm.value))} por venda concluída`}
+                  {/* Header modal */}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+                    <div>
+                      <div style={{ fontSize:20, marginBottom:4 }}>{detailLog.type==="import"?"📥":"📤"}</div>
+                      <h3 style={{ margin:0, color:textMain, fontSize:16, fontWeight:700 }}>{detailLog.type_label}</h3>
+                      <p style={{ margin:"4px 0 0", color:textSub, fontSize:13 }}>
+                        {detailLog.entity_label} · {detailLog.sistema_label} · {detailLog.created_at}
+                      </p>
+                      <p style={{ margin:"4px 0 0", color:textSub, fontSize:12 }}>📄 {detailLog.filename}</p>
+                    </div>
+                    <button onClick={()=>setDetailLog(null)}
+                      style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.25)",
+                        borderRadius:8, color:"#f87171", width:32, height:32, cursor:"pointer",
+                        fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
                   </div>
-                )}
 
-                <div style={{ display:'flex', gap:10, marginTop:18, justifyContent:'flex-end' }}>
-                  <button onClick={()=>{setShowForm(false);setEditRule(null);}}
-                    style={{ padding:'9px 20px', borderRadius:10, border:`1px solid ${cardBorder}`,
-                      background:'transparent', color:textSub, cursor:'pointer', fontWeight:600, fontSize:14 }}>
-                    Cancelar
-                  </button>
-                  <button onClick={handleSaveRule}
-                    style={{ padding:'9px 24px', borderRadius:10, border:'none', cursor:'pointer',
-                      background:primaryGrad, color:'#fff', fontWeight:700, fontSize:14,
-                      boxShadow:`0 4px 14px ${primary}44` }}>
-                    {editRule ? 'Salvar alterações' : 'Criar regra'}
-                  </button>
+                  {/* Cards resumo */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:20 }}>
+                    {[
+                      { label:"Total",       value:detailLog.total,   color:textSub    },
+                      { label:"Criados",     value:detailLog.created, color:"#4ade80"  },
+                      { label:"Atualizados", value:detailLog.updated, color:"#60a5fa"  },
+                      { label:"Ignorados",   value:detailLog.skipped, color:"#f59e0b"  },
+                    ].map(s=>(
+                      <div key={s.label} style={{ ...card, textAlign:"center", padding:"14px 8px" }}>
+                        <div style={{ fontSize:22, fontWeight:800, color:s.color }}>{s.value}</div>
+                        <div style={{ fontSize:11, color:textSub, textTransform:"uppercase", letterSpacing:"0.5px", marginTop:2 }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Barra de sucesso visual */}
+                  {detailLog.total > 0 && (
+                    <div style={{ marginBottom:20 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                        <span style={{ fontSize:12, color:textSub }}>Taxa de sucesso</span>
+                        <span style={{ fontSize:12, fontWeight:700, color:"#4ade80" }}>
+                          {Math.round((detailLog.created+detailLog.updated)/detailLog.total*100)}%
+                        </span>
+                      </div>
+                      <div style={{ height:6, borderRadius:6, background:"rgba(255,255,255,0.08)", overflow:"hidden" }}>
+                        <div style={{ height:"100%", borderRadius:6, background:"linear-gradient(90deg,#22c55e,#4ade80)",
+                          width:`${Math.round((detailLog.created+detailLog.updated)/detailLog.total*100)}%`,
+                          transition:"width 0.8s ease" }}/>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Erros detalhados */}
+                  {detailLog.errors_log?.length > 0 && (
+                    <div>
+                      <h4 style={{ color:"#f87171", margin:"0 0 10px", fontSize:14, fontWeight:700 }}>
+                        ❌ Erros ({detailLog.errors_log.length})
+                      </h4>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:280, overflowY:"auto" }}>
+                        {detailLog.errors_log.map((err,i)=>(
+                          <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:10,
+                            padding:"8px 12px", background:"rgba(239,68,68,0.07)",
+                            borderRadius:8, border:"1px solid rgba(239,68,68,0.18)" }}>
+                            <span style={{ color:"#f87171", fontWeight:700, fontSize:12, flexShrink:0 }}>#{i+1}</span>
+                            <span style={{ color:textMain, fontSize:12 }}>
+                              {typeof err==="string"?err:JSON.stringify(err)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {detailLog.errors_log?.length===0 && (
+                    <div style={{ textAlign:"center", padding:"20px 0", color:"#4ade80" }}>
+                      <div style={{ fontSize:"2rem", marginBottom:8 }}>✅</div>
+                      <div style={{ fontWeight:600 }}>Nenhum erro — importação 100% limpa!</div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Lista de regras */}
-            {rules.length === 0 && !loading && (
-              <div style={{ ...card, padding:'50px 20px', textAlign:'center' }}>
-                <div style={{ fontSize:'2rem', marginBottom:10 }}>⚙️</div>
-                <div style={{ color:textMain, fontWeight:600, marginBottom:6 }}>Nenhuma regra configurada</div>
-                <div style={{ color:textSub, fontSize:13 }}>
-                  {isAdmin ? 'Clique em "+ Nova Regra" para começar' : 'Peça ao administrador para configurar as regras'}
-                </div>
-              </div>
-            )}
-
-            {rules.map(rule => {
-              const ac = avatarColor(rule.seller_name);
+            {!histLoading && history.map(log => {
+              const statusColor = log.status === 'success' ? '#4ade80' : log.status === 'warning' ? '#f59e0b' : '#f87171';
+              const statusBg    = log.status === 'success' ? 'rgba(34,197,94,0.1)' : log.status === 'warning' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
+              const statusLabel = log.status === 'success' ? '✅ Sucesso' : log.status === 'warning' ? '⚠️ Parcial' : '❌ Falhou';
               return (
-                <div key={rule.id} style={{ ...card, padding:'18px 20px' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
-                    <div style={{ width:42, height:42, borderRadius:'50%', background:ac,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      fontWeight:700, fontSize:16, color:'#fff', flexShrink:0 }}>
-                      {rule.seller_name?.charAt(0)?.toUpperCase() || '?'}
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, color:textMain, fontSize:15 }}>{rule.seller_name}</div>
-                      <div style={{ fontSize:12, color:textSub, marginTop:2 }}>
-                        {TYPE_LABELS[rule.type]?.icon} {TYPE_LABELS[rule.type]?.label}
-                        {' — '}
-                        <strong style={{ color:textMain }}>
-                          {rule.type==='fixed' ? fmt(rule.value) : fmtPct(rule.value)}
-                        </strong>
-                        {' por venda'}
+                <div key={log.id} onClick={()=>setDetailLog(log)} style={{ ...card, padding:'18px 20px', cursor:'pointer', transition:'all 0.18s' }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=theme.primary||'#6366f1'}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=cardBorder}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:10 }}>
+                    {/* Lado esquerdo */}
+                    <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+                      <div style={{ fontSize:'1.8rem', flexShrink:0 }}>
+                        {log.type === 'import' ? '📥' : '📤'}
+                      </div>
+                      <div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
+                          <span style={{ fontWeight:700, color:textMain, fontSize:14 }}>{log.type_label}</span>
+                          <span style={{ background:`${statusColor}22`, color:statusColor, padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700 }}>{statusLabel}</span>
+                          <span style={{ background:isGlass?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.06)', color:textSub, padding:'2px 8px', borderRadius:6, fontSize:11 }}>{log.entity_label}</span>
+                          {log.sistema && log.sistema !== 'generico' && (
+                            <span style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8', padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:600 }}>{log.sistema_label}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize:12, color:textSub }}>
+                          📄 {log.filename} · {log.created_at}
+                        </div>
                       </div>
                     </div>
-                    <span style={{ padding:'4px 12px', borderRadius:20, fontSize:11, fontWeight:700,
-                      background:rule.active?'rgba(34,197,94,0.15)':'rgba(255,255,255,0.08)',
-                      color:rule.active?'#4ade80':textSub }}>
-                      {rule.active ? '✅ Ativa' : '⏸ Inativa'}
-                    </span>
-                    {isAdmin && (
-                      <div style={{ display:'flex', gap:8 }}>
-                        <button onClick={()=>openEditRule(rule)}
-                          style={{ padding:'7px 14px', borderRadius:8, border:`1px solid ${cardBorder}`,
-                            background:'transparent', color:primary, cursor:'pointer', fontWeight:600, fontSize:13 }}>
-                          ✏️ Editar
-                        </button>
-                        <button onClick={()=>handleDeleteRule(rule.id)}
-                          style={{ padding:'7px 14px', borderRadius:8, border:'1px solid rgba(239,68,68,0.3)',
-                            background:'rgba(239,68,68,0.1)', color:'#f87171', cursor:'pointer', fontWeight:600, fontSize:13 }}>
-                          🗑
-                        </button>
-                      </div>
-                    )}
+                    {/* Lado direito — contadores */}
+                    <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+                      {[
+                        { label:'Total',     value:log.total,   color:textSub    },
+                        { label:'Criados',   value:log.created, color:'#4ade80'  },
+                        { label:'Atualizados',value:log.updated,color:'#60a5fa'  },
+                        { label:'Ignorados', value:log.skipped, color:'#f59e0b'  },
+                        { label:'Erros',     value:log.errors,  color:'#f87171'  },
+                      ].map(s => (
+                        <div key={s.label} style={{ textAlign:'center', minWidth:52 }}>
+                          <div style={{ fontSize:16, fontWeight:800, color:s.color }}>{s.value}</div>
+                          <div style={{ fontSize:10, color:textSub, textTransform:'uppercase', letterSpacing:'0.5px' }}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Erros detalhados */}
+                  {log.errors_log?.length > 0 && (
+                    <div style={{ marginTop:12, borderTop:`1px solid ${cardBorder}`, paddingTop:10 }}>
+                      <div style={{ fontSize:12, color:'#f87171', fontWeight:600, marginBottom:6 }}>Erros:</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {log.errors_log.slice(0,5).map((err, i) => (
+                          <div key={i} style={{ fontSize:11, color:textSub, background:'rgba(239,68,68,0.06)', borderRadius:6, padding:'4px 8px' }}>
+                            #{i+1} {typeof err === 'string' ? err : JSON.stringify(err)}
+                          </div>
+                        ))}
+                        {log.errors_log.length > 5 && (
+                          <div style={{ fontSize:11, color:textSub, fontStyle:'italic' }}>... e mais {log.errors_log.length - 5} erros</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -502,14 +1059,13 @@ export default function Commissions() {
         )}
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div style={{ position:'fixed', bottom:24, right:24, color:'#fff',
-          padding:'12px 22px', borderRadius:12, fontWeight:600, fontSize:14, zIndex:9999,
-          boxShadow:'0 8px 30px rgba(0,0,0,0.4)',
-          background:toast.type==='error'?'#ef4444':primaryGrad }}>
-          {toast.msg}
-        </div>
+      {/* MODAL RELATÓRIO DE PRODUTOS */}
+      {reportModal && (
+        <ProductReportModal
+          onClose={() => setReportModal(false)}
+          theme={theme}
+          isGlass={isGlass}
+        />
       )}
     </PageLayout>
   );
