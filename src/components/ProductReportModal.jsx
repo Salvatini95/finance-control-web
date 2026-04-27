@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { PRINT_THEMES, buildPrintCSS } from "../utils/printThemes";
 
-const API = "https://finance-control-api-production.up.railway.app/api";
+const API = "https://api.svfinance.com.br/api";
 const token = () => localStorage.getItem("token");
 
 function fmt(v) {
