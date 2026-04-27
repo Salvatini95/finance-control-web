@@ -6,7 +6,7 @@ import logoGif from "../assets/video.gif";
 import { useTheme } from "../contexts/ThemeContext";
 import { PRINT_THEMES, buildPrintCSS } from "../utils/printThemes";
 
-const API = "https://finance-control-api-production.up.railway.app/api";
+const API = "https://api.svfinance.com.br/api";
 const token = () => localStorage.getItem("token");
 
 function fmt(v) {
